@@ -1,0 +1,51 @@
+package com.example.myapplication.parsing
+
+import com.example.myapplication.UnitType
+
+class BasicTokenProvider : TokenProvider {
+    private val tokens: Map<String, Token> = mapOf(
+        "igrek" to Token("Y", TokenType.LETTER),
+        "de" to Token("D", TokenType.LETTER),
+        "ce" to Token("C", TokenType.LETTER),
+        "ha" to Token("H", TokenType.LETTER),
+        "b" to Token("B", TokenType.LETTER),
+        "hager" to Token("HAGER", TokenType.WORD),
+        "bax" to Token("BAX", TokenType.WORD),
+        "kabel" to Token("KABEL", TokenType.WORD),
+        "przewod" to Token("PRZEWOD", TokenType.WORD),
+        "na" to Token("x", TokenType.SYMBOL),
+        "myslnik" to Token("-", TokenType.SYMBOL),
+        "slash" to Token("/", TokenType.SYMBOL),
+        "i" to Token("i", TokenType.CONNECTOR),
+        "pol" to Token("0,5", TokenType.FRACTION),
+        "zero" to Token("0", TokenType.NUMBER, numberValue = 0),
+        "jeden" to Token("1", TokenType.NUMBER, numberValue = 1),
+        "dwa" to Token("2", TokenType.NUMBER, numberValue = 2),
+        "trzy" to Token("3", TokenType.NUMBER, numberValue = 3),
+        "cztery" to Token("4", TokenType.NUMBER, numberValue = 4),
+        "piec" to Token("5", TokenType.NUMBER, numberValue = 5),
+        "szesc" to Token("6", TokenType.NUMBER, numberValue = 6),
+        "siedem" to Token("7", TokenType.NUMBER, numberValue = 7),
+        "osiem" to Token("8", TokenType.NUMBER, numberValue = 8),
+        "dziewiec" to Token("9", TokenType.NUMBER, numberValue = 9),
+        "dziesiec" to Token("10", TokenType.NUMBER, numberValue = 10),
+        "szesnascie" to Token("16", TokenType.NUMBER, numberValue = 16),
+        "dwadziescia" to Token("20", TokenType.NUMBER, numberValue = 20),
+        "trzydziesci" to Token("30", TokenType.NUMBER, numberValue = 30),
+        "czterdziesci" to Token("40", TokenType.NUMBER, numberValue = 40),
+        "piecdziesiat" to Token("50", TokenType.NUMBER, numberValue = 50),
+        "szescdziesiat" to Token("60", TokenType.NUMBER, numberValue = 60),
+        "siedemdziesiat" to Token("70", TokenType.NUMBER, numberValue = 70),
+        "osiemdziesiat" to Token("80", TokenType.NUMBER, numberValue = 80),
+        "dziewiecdziesiat" to Token("90", TokenType.NUMBER, numberValue = 90),
+        "sto" to Token("100", TokenType.NUMBER, numberValue = 100),
+        "szt" to Token("szt", TokenType.UNIT, unitType = UnitType.SZT),
+        "sztuk" to Token("szt", TokenType.UNIT, unitType = UnitType.SZT),
+        "sztuki" to Token("szt", TokenType.UNIT, unitType = UnitType.SZT),
+        "m" to Token("m", TokenType.UNIT, unitType = UnitType.M),
+        "kg" to Token("kg", TokenType.UNIT, unitType = UnitType.KG),
+        "cm" to Token("cm", TokenType.UNIT, unitType = UnitType.CM)
+    )
+
+    override fun tokenFor(word: String): Token? = tokens[word]
+}

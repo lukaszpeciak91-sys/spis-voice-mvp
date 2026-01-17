@@ -17,12 +17,21 @@ enum class UnitType(val label: String) {
     CM("cm")
 }
 
+enum class ParseStatus {
+    OK,
+    WARNING,
+    FAIL
+}
+
 data class SpisRow(
     val id: String = UUID.randomUUID().toString(),
     val type: RowType,
     val rawText: String = "",
     val quantity: Int? = null,
-    val unit: UnitType? = null
+    val unit: UnitType? = null,
+    val normalizedText: String? = null,
+    val parseStatus: ParseStatus? = null,
+    val parseDebug: List<String>? = null
 )
 data class ProjectState(
     val inputText: String = "",
@@ -30,4 +39,3 @@ data class ProjectState(
     val unit: UnitType = UnitType.SZT,
     val rows: List<SpisRow> = emptyList()
 )
-
