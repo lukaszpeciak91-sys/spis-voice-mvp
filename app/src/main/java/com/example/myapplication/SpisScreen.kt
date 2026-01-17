@@ -18,10 +18,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.snapshotFlow
 import com.example.myapplication.parsing.InventoryParser
+import com.example.myapplication.whisper.WhisperTranscriber
+import kotlinx.coroutines.launch
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 
@@ -76,6 +79,8 @@ fun SpisScreen() {
     val context = LocalContext.current
     val recorder = remember { AudioRecorder(context) }
     val parser = remember { InventoryParser() }
+    val transcriber = remember { WhisperTranscriber(context) }
+    val coroutineScope = rememberCoroutineScope()
 
     var isRecording by remember { mutableStateOf(false) }
     var lastAudioPath by remember { mutableStateOf<String?>(null) }
@@ -248,16 +253,42 @@ fun SpisScreen() {
                 val file = recorder.stop()
                 isRecording = false
                 if (file != null) {
-                    val audioRow = applyParsing(
-                        parser = parser,
-                        row = SpisRow(type = RowType.ITEM),
-                        rawText = "[AUDIO] ${file.name}",
+                    val audioRow = SpisRow(
+                        type = RowType.ITEM,
+                        rawText = "[AUDIO] ${file.name} (transcribing...)",
                         quantity = 1,
                         unit = UnitType.SZT,
-                        allowPrefillQuantity = true,
-                        allowPrefillUnit = true
+                        parseStatus = ParseStatus.WARNING,
+                        parseDebug = listOf("Transcribing audio...")
                     )
                     rows.add(audioRow)
+                    coroutineScope.launch {
+                        val result = transcriber.transcribe(file)
+                        val index = rows.indexOfFirst { it.id == audioRow.id }
+                        if (index == -1) return@launch
+
+                        val trimmed = result.getOrNull()?.trim().orEmpty()
+                        if (result.isSuccess && trimmed.isNotEmpty()) {
+                            val currentRow = rows[index]
+                            val updated = applyParsing(
+                                parser = parser,
+                                row = currentRow,
+                                rawText = trimmed,
+                                quantity = currentRow.quantity ?: 1,
+                                unit = currentRow.unit ?: UnitType.SZT,
+                                allowPrefillQuantity = currentRow.quantity == 1,
+                                allowPrefillUnit = currentRow.unit == UnitType.SZT
+                            )
+                            rows[index] = updated
+                        } else {
+                            rows[index] = rows[index].copy(
+                                rawText = "[AUDIO] ${file.name} (transcription failed)",
+                                normalizedText = null,
+                                parseStatus = ParseStatus.FAIL,
+                                parseDebug = listOf("Transcription failed.")
+                            )
+                        }
+                    }
                 }
                 textFocusRequester.requestFocus()
             }
