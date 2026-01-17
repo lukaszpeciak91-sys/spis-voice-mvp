@@ -6,7 +6,7 @@ import java.io.File
 /**
  * Offline Whisper transcription engine wrapper.
  *
- * Audio must be mono, 16kHz, PCM16. Conversion is not implemented yet.
+ * Audio must be mono, 16kHz, PCM16. Convert input before calling transcribe.
  *
  * Example:
  * val engine = WhisperEngine(File(filesDir, "models/ggml-base.bin"))
