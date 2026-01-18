@@ -281,11 +281,12 @@ fun SpisScreen() {
                             )
                             rows[index] = updated
                         } else {
+                            val failureMessage = result.exceptionOrNull()?.message ?: "Transcription failed."
                             rows[index] = rows[index].copy(
-                                rawText = "[AUDIO] ${file.name} (transcription failed)",
+                                rawText = "[AUDIO] ${file.name} (${failureMessage})",
                                 normalizedText = null,
                                 parseStatus = ParseStatus.FAIL,
-                                parseDebug = listOf("Transcription failed.")
+                                parseDebug = listOf(failureMessage)
                             )
                         }
                     }
