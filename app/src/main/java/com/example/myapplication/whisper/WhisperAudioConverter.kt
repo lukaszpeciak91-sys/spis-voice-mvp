@@ -1,26 +1,35 @@
 package com.example.myapplication.whisper
 
-import android.content.Context
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.roundToInt
 
 object WhisperAudioConverter {
     private const val TARGET_SAMPLE_RATE = 16000
+    private const val LOG_TAG = "WhisperAudioConverter"
 
-    fun convertToWav(context: Context, inputFile: File): File {
+    fun convertToPcm(inputFile: File): FloatArray {
+        val startTime = System.nanoTime()
         val decoded = decodeToPcm(inputFile)
+        Log.i(
+            LOG_TAG,
+            "Input format mime=${decoded.mimeType} sampleRate=${decoded.sampleRate}Hz channels=${decoded.channels}"
+        )
         val monoSamples = downmixToMono(decoded.samples, decoded.channels)
         val resampled = resample(monoSamples, decoded.sampleRate, TARGET_SAMPLE_RATE)
-        val outputFile = File(context.cacheDir, "whisper_${inputFile.nameWithoutExtension}.wav")
-        writeWav(outputFile, resampled, TARGET_SAMPLE_RATE)
-        return outputFile
+        val floatSamples = pcm16ToFloat(resampled)
+        val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
+        Log.i(
+            LOG_TAG,
+            "Output format sampleRate=${TARGET_SAMPLE_RATE}Hz channels=1 samples=${floatSamples.size} conversionMs=${elapsedMs}"
+        )
+        return floatSamples
     }
 
     private fun decodeToPcm(inputFile: File): DecodedAudio {
@@ -120,7 +129,7 @@ object WhisperAudioConverter {
             .asShortBuffer()
             .get(samples)
 
-        return DecodedAudio(samples, sampleRate, channels)
+        return DecodedAudio(samples, sampleRate, channels, mime)
     }
 
     private fun downmixToMono(samples: ShortArray, channels: Int): ShortArray {
@@ -155,34 +164,18 @@ object WhisperAudioConverter {
         return output
     }
 
-    private fun writeWav(file: File, samples: ShortArray, sampleRate: Int) {
-        val dataSize = samples.size * 2
-        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
-        header.put("RIFF".toByteArray())
-        header.putInt(36 + dataSize)
-        header.put("WAVE".toByteArray())
-        header.put("fmt ".toByteArray())
-        header.putInt(16)
-        header.putShort(1.toShort())
-        header.putShort(1.toShort())
-        header.putInt(sampleRate)
-        header.putInt(sampleRate * 2)
-        header.putShort(2.toShort())
-        header.putShort(16.toShort())
-        header.put("data".toByteArray())
-        header.putInt(dataSize)
-
-        FileOutputStream(file).use { output ->
-            output.write(header.array())
-            val dataBuffer = ByteBuffer.allocate(dataSize).order(ByteOrder.LITTLE_ENDIAN)
-            samples.forEach { sample -> dataBuffer.putShort(sample) }
-            output.write(dataBuffer.array())
+    private fun pcm16ToFloat(samples: ShortArray): FloatArray {
+        val floats = FloatArray(samples.size)
+        for (i in samples.indices) {
+            floats[i] = samples[i] / 32768.0f
         }
+        return floats
     }
 
     private data class DecodedAudio(
         val samples: ShortArray,
         val sampleRate: Int,
-        val channels: Int
+        val channels: Int,
+        val mimeType: String
     )
 }
