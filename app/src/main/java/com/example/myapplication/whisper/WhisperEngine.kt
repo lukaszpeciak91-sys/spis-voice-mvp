@@ -21,15 +21,16 @@ class WhisperEngine(private val modelFile: File) : Closeable {
             "Model file not found at ${modelFile.absolutePath}. " +
                 "Provide a local whisper.cpp model path."
         }
+        require(modelFile.length() < 1_000_000) {
+            "Model file exceeds safety limit: ${modelFile.length()} bytes."
+        }
         nativeHandle = nativeInit(modelFile.absolutePath)
         check(nativeHandle != 0L) { "Failed to initialize whisper engine." }
     }
 
-    fun transcribe(audioFile: File): String {
-        require(audioFile.exists()) {
-            "Audio file not found at ${audioFile.absolutePath}"
-        }
-        return nativeTranscribe(nativeHandle, audioFile.absolutePath)
+    fun transcribe(samples: FloatArray): String {
+        require(samples.isNotEmpty()) { "Audio samples are empty." }
+        return nativeTranscribe(nativeHandle, samples)
     }
 
     override fun close() {
@@ -38,7 +39,7 @@ class WhisperEngine(private val modelFile: File) : Closeable {
 
     private external fun nativeInit(modelPath: String): Long
 
-    private external fun nativeTranscribe(handle: Long, audioPath: String): String
+    private external fun nativeTranscribe(handle: Long, samples: FloatArray): String
 
     private external fun nativeRelease(handle: Long)
 
