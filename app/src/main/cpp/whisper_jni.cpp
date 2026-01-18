@@ -165,6 +165,7 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeInit(
         __android_log_write(ANDROID_LOG_ERROR, kLogTag, "Failed to init whisper context.");
         return 0;
     }
+    __android_log_write(ANDROID_LOG_INFO, kLogTag, "Whisper model loaded.");
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -181,6 +182,10 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
     }
 
     const char* audio_chars = env->GetStringUTFChars(audio_path, nullptr);
+    if (!audio_chars) {
+        __android_log_write(ANDROID_LOG_ERROR, kLogTag, "Audio path was null.");
+        return env->NewStringUTF("");
+    }
     __android_log_print(
         ANDROID_LOG_INFO,
         kLogTag,
@@ -193,12 +198,8 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
     WavData wav;
     std::string error;
     if (!ReadWavFile(audio_path_string, &wav, &error)) {
-        std::string message = "Transcription failed: " + error;
-        jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
-        if (exception_class) {
-            env->ThrowNew(exception_class, message.c_str());
-        }
-        return nullptr;
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Transcription failed: %s", error.c_str());
+        return env->NewStringUTF("");
     }
 
     whisper_full_params params = whisper_full_default_params(0);
@@ -207,16 +208,15 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
     params.print_timestamps = false;
     params.translate = false;
     params.n_threads = std::max(1u, std::min(4u, std::thread::hardware_concurrency()));
+    __android_log_write(ANDROID_LOG_INFO, kLogTag, "Transcription started.");
     int result = whisper_full(ctx, params, wav.samples.data(), static_cast<int>(wav.samples.size()));
     if (result != 0) {
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        if (exception_class) {
-            env->ThrowNew(exception_class, "Transcription failed.");
-        }
-        return nullptr;
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Transcription failed with code: %d", result);
+        return env->NewStringUTF("");
     }
 
     if (whisper_full_n_segments(ctx) <= 0) {
+        __android_log_write(ANDROID_LOG_INFO, kLogTag, "Transcription finished with no segments.");
         return env->NewStringUTF("");
     }
     std::string transcript;
@@ -227,6 +227,13 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
             transcript += text;
         }
     }
+    __android_log_write(ANDROID_LOG_INFO, kLogTag, "Transcription finished.");
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        kLogTag,
+        "Returned transcription length: %zu",
+        transcript.size()
+    );
     return env->NewStringUTF(transcript.c_str());
 }
 
