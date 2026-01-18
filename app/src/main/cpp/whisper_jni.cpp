@@ -24,7 +24,8 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeInit(
     jstring model_path
 ) {
     const char* path_chars = env->GetStringUTFChars(model_path, nullptr);
-    whisper_context* ctx = whisper_init_from_file(path_chars);
+    whisper_context_params ctx_params = whisper_context_default_params();
+    whisper_context* ctx = whisper_init_from_file_with_params(path_chars, ctx_params);
     env->ReleaseStringUTFChars(model_path, path_chars);
     if (!ctx) {
         __android_log_write(ANDROID_LOG_ERROR, kLogTag, "Failed to init whisper context.");
@@ -57,10 +58,13 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
         return env->NewStringUTF("");
     }
 
-    std::vector<float> samples(static_cast<size_t>(sample_count));
-    env->GetFloatArrayRegion(audio_samples, 0, sample_count, samples.data());
+std::vector<float> samples(static_cast<size_t>(sample_count));
+env->GetFloatArrayRegion(audio_samples, 0, sample_count, samples.data());
 
-    whisper_full_params params = whisper_full_default_params(0);
+whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+
+params.print_realtime = false;
+params.print_progress = false;
     params.print_realtime = false;
     params.print_progress = false;
     params.print_timestamps = false;
