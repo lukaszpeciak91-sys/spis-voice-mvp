@@ -1,11 +1,14 @@
 package com.example.myapplication.whisper
 
 import android.content.Context
+import android.util.Log
 import java.io.File
 
 object WhisperModelProvider {
     private const val MODEL_ASSET_PATH = "models/ggml-tiny.bin"
     private const val MODEL_FILE_NAME = "ggml-tiny.bin"
+    private const val MIN_MODEL_SIZE_BYTES = 1_000_000L
+    private const val TAG = "WhisperModelProvider"
 
     fun getModelFile(context: Context): File {
         val modelsDir = File(context.filesDir, "models")
@@ -13,8 +16,16 @@ object WhisperModelProvider {
             modelsDir.mkdirs()
         }
         val modelFile = File(modelsDir, MODEL_FILE_NAME)
-        if (!modelFile.exists() || modelFile.length() == 0L) {
+        if (!modelFile.exists() || modelFile.length() < MIN_MODEL_SIZE_BYTES) {
+            if (modelFile.exists()) {
+                modelFile.delete()
+            }
             copyAssetToFile(context, MODEL_ASSET_PATH, modelFile)
+            val size = modelFile.length()
+            Log.i(TAG, "Whisper model ready at ${modelFile.absolutePath} (${size} bytes)")
+            if (size < MIN_MODEL_SIZE_BYTES) {
+                throw IllegalStateException("Model copy failed (size too small)")
+            }
         }
         return modelFile
     }

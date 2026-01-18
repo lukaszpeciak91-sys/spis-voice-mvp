@@ -15,14 +15,15 @@ import java.io.File
  */
 class WhisperEngine(private val modelFile: File) : Closeable {
     private val nativeHandle: Long
+    private val minModelSizeBytes = 1_000_000L
 
     init {
         require(modelFile.exists()) {
             "Model file not found at ${modelFile.absolutePath}. " +
                 "Provide a local whisper.cpp model path."
         }
-        require(modelFile.length() < 1_000_000) {
-            "Model file exceeds safety limit: ${modelFile.length()} bytes."
+        require(modelFile.length() >= minModelSizeBytes) {
+            "Model file is too small: ${modelFile.length()} bytes."
         }
         nativeHandle = nativeInit(modelFile.absolutePath)
         check(nativeHandle != 0L) { "Failed to initialize whisper engine." }
