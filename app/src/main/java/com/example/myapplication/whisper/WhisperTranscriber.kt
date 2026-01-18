@@ -10,7 +10,14 @@ class WhisperTranscriber(private val context: Context) {
         return withContext(Dispatchers.IO) {
             runCatching {
                 val modelFile = WhisperModelProvider.getModelFile(context)
-                val wavFile = WhisperAudioConverter.convertToWav(context, audioFile)
+                val wavFile = try {
+                    WhisperAudioConverter.convertToWav(context, audioFile)
+                } catch (e: Exception) {
+                    throw IllegalArgumentException(
+                        "Transcription failed: unsupported audio format",
+                        e
+                    )
+                }
                 try {
                     WhisperEngine(modelFile).use { engine ->
                         engine.transcribe(wavFile)

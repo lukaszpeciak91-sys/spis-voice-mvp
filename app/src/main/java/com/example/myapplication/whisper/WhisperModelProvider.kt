@@ -13,7 +13,7 @@ object WhisperModelProvider {
             modelsDir.mkdirs()
         }
         val modelFile = File(modelsDir, MODEL_FILE_NAME)
-        if (!modelFile.exists()) {
+        if (!modelFile.exists() || modelFile.length() == 0L) {
             copyAssetToFile(context, MODEL_ASSET_PATH, modelFile)
         }
         return modelFile
