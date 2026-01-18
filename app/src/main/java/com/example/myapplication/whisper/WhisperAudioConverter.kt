@@ -1,9 +1,12 @@
 package com.example.myapplication.whisper
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.os.SystemClock
+import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -13,14 +16,27 @@ import kotlin.math.roundToInt
 
 object WhisperAudioConverter {
     private const val TARGET_SAMPLE_RATE = 16000
+    private const val TAG = "WhisperAudioConverter"
 
-    fun convertToWav(context: Context, inputFile: File): File {
+    fun convertToWav(context: Context, inputFile: File): ConversionResult {
+        val conversionStart = SystemClock.elapsedRealtime()
         val decoded = decodeToPcm(inputFile)
         val monoSamples = downmixToMono(decoded.samples, decoded.channels)
         val resampled = resample(monoSamples, decoded.sampleRate, TARGET_SAMPLE_RATE)
         val outputFile = File(context.cacheDir, "whisper_${inputFile.nameWithoutExtension}.wav")
         writeWav(outputFile, resampled, TARGET_SAMPLE_RATE)
-        return outputFile
+        val conversionMs = SystemClock.elapsedRealtime() - conversionStart
+        Log.i(
+            TAG,
+            "Output format: ${TARGET_SAMPLE_RATE}Hz mono, samples=${resampled.size} (conversion ${conversionMs}ms)"
+        )
+        return ConversionResult(
+            outputFile = outputFile,
+            outputSamples = resampled.size,
+            outputSampleRate = TARGET_SAMPLE_RATE,
+            outputChannels = 1,
+            conversionMs = conversionMs
+        )
     }
 
     private fun decodeToPcm(inputFile: File): DecodedAudio {
@@ -51,6 +67,21 @@ object WhisperAudioConverter {
         val outputStream = ByteArrayOutputStream()
         var inputDone = false
         var outputDone = false
+        var outputSampleRate = trackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+        var outputChannels = trackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        var pcmEncoding = trackFormat.getInteger(
+            MediaFormat.KEY_PCM_ENCODING,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        val durationUs = if (trackFormat.containsKey(MediaFormat.KEY_DURATION)) {
+            trackFormat.getLong(MediaFormat.KEY_DURATION)
+        } else {
+            -1L
+        }
+        Log.i(
+            TAG,
+            "Input format: sampleRate=$outputSampleRate channels=$outputChannels durationUs=$durationUs"
+        )
 
         while (!outputDone) {
             if (!inputDone) {
@@ -101,7 +132,13 @@ object WhisperAudioConverter {
                     }
                 }
                 outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                    // No-op; we rely on the original track format for sample rate/channels.
+                    val newFormat = codec.outputFormat
+                    outputSampleRate = newFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                    outputChannels = newFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                    pcmEncoding = newFormat.getInteger(
+                        MediaFormat.KEY_PCM_ENCODING,
+                        AudioFormat.ENCODING_PCM_16BIT
+                    )
                 }
             }
         }
@@ -110,17 +147,38 @@ object WhisperAudioConverter {
         codec.release()
         extractor.release()
 
-        val sampleRate = trackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-        val channels = trackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
         val pcmBytes = outputStream.toByteArray()
-        val shortCount = pcmBytes.size / 2
-        val samples = ShortArray(shortCount)
-        ByteBuffer.wrap(pcmBytes)
-            .order(ByteOrder.LITTLE_ENDIAN)
-            .asShortBuffer()
-            .get(samples)
+        val samples = when (pcmEncoding) {
+            AudioFormat.ENCODING_PCM_16BIT -> {
+                val shortCount = pcmBytes.size / 2
+                val buffer = ShortArray(shortCount)
+                ByteBuffer.wrap(pcmBytes)
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .asShortBuffer()
+                    .get(buffer)
+                buffer
+            }
+            AudioFormat.ENCODING_PCM_FLOAT -> {
+                val floatCount = pcmBytes.size / 4
+                val floatBuffer = FloatArray(floatCount)
+                ByteBuffer.wrap(pcmBytes)
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .asFloatBuffer()
+                    .get(floatBuffer)
+                val shortBuffer = ShortArray(floatCount)
+                for (i in floatBuffer.indices) {
+                    val clamped = (floatBuffer[i] * Short.MAX_VALUE).roundToInt()
+                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                    shortBuffer[i] = clamped.toShort()
+                }
+                shortBuffer
+            }
+            else -> {
+                throw IllegalArgumentException("Unsupported PCM encoding: $pcmEncoding")
+            }
+        }
 
-        return DecodedAudio(samples, sampleRate, channels)
+        return DecodedAudio(samples, outputSampleRate, outputChannels, durationUs)
     }
 
     private fun downmixToMono(samples: ShortArray, channels: Int): ShortArray {
@@ -180,9 +238,18 @@ object WhisperAudioConverter {
         }
     }
 
+    data class ConversionResult(
+        val outputFile: File,
+        val outputSamples: Int,
+        val outputSampleRate: Int,
+        val outputChannels: Int,
+        val conversionMs: Long
+    )
+
     private data class DecodedAudio(
         val samples: ShortArray,
         val sampleRate: Int,
-        val channels: Int
+        val channels: Int,
+        val durationUs: Long
     )
 }
