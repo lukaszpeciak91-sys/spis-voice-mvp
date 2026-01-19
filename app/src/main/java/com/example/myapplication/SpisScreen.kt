@@ -1,6 +1,7 @@
 package com.example.myapplication
 
 import android.Manifest
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -27,6 +28,8 @@ import com.example.myapplication.whisper.WhisperTranscriber
 import kotlinx.coroutines.launch
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
+
+private const val TAG = "SpisScreen"
 
 private fun applyParsing(
     parser: InventoryParser,
@@ -280,6 +283,8 @@ fun SpisScreen() {
                                 allowPrefillUnit = currentRow.unit == UnitType.SZT
                             )
                             rows[index] = updated
+                            file.delete()
+                            Log.i(TAG, "Audio cleanup success: ${file.name}")
                         } else {
                             val failureMessage = result.exceptionOrNull()?.message ?: "Transcription failed."
                             rows[index] = rows[index].copy(
@@ -288,6 +293,7 @@ fun SpisScreen() {
                                 parseStatus = ParseStatus.FAIL,
                                 parseDebug = listOf(failureMessage)
                             )
+                            Log.i(TAG, "Audio cleanup skipped (failure): ${file.name}")
                         }
                     }
                 }
