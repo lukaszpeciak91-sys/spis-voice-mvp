@@ -11,9 +11,15 @@
 
 namespace {
 constexpr const char* kLogTag = "WhisperJNI";
+constexpr const char* kErrorPrefix = "ERROR:";
 
 whisper_context* RequireContext(jlong handle) {
     return reinterpret_cast<whisper_context*>(handle);
+}
+
+jstring NewError(JNIEnv* env, const std::string& message) {
+    const std::string full = std::string(kErrorPrefix) + " " + message;
+    return env->NewStringUTF(full.c_str());
 }
 }  // namespace
 
@@ -44,27 +50,26 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
 ) {
     whisper_context* ctx = RequireContext(handle);
     if (!ctx) {
-        return env->NewStringUTF("");
+        __android_log_write(ANDROID_LOG_ERROR, kLogTag, "Whisper context was null.");
+        return NewError(env, "Whisper context not initialized.");
     }
 
     if (!audio_samples) {
         __android_log_write(ANDROID_LOG_ERROR, kLogTag, "Audio samples were null.");
-        return env->NewStringUTF("");
+        return NewError(env, "Audio samples were null.");
     }
 
     const jsize sample_count = env->GetArrayLength(audio_samples);
     if (sample_count <= 0) {
         __android_log_write(ANDROID_LOG_ERROR, kLogTag, "Audio samples were empty.");
-        return env->NewStringUTF("");
+        return NewError(env, "Audio samples were empty.");
     }
 
-std::vector<float> samples(static_cast<size_t>(sample_count));
-env->GetFloatArrayRegion(audio_samples, 0, sample_count, samples.data());
+    std::vector<float> samples(static_cast<size_t>(sample_count));
+    env->GetFloatArrayRegion(audio_samples, 0, sample_count, samples.data());
 
-whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
 
-params.print_realtime = false;
-params.print_progress = false;
     params.print_realtime = false;
     params.print_progress = false;
     params.print_timestamps = false;
@@ -73,18 +78,21 @@ params.print_progress = false;
     __android_log_print(
         ANDROID_LOG_INFO,
         kLogTag,
-        "Transcription started with %d samples.",
-        sample_count
+        "Transcription started with %d samples using %u threads.",
+        sample_count,
+        params.n_threads
     );
+    __android_log_write(ANDROID_LOG_INFO, kLogTag, "Calling whisper_full...");
     int result = whisper_full(ctx, params, samples.data(), sample_count);
+    __android_log_print(ANDROID_LOG_INFO, kLogTag, "whisper_full returned %d.", result);
     if (result != 0) {
         __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Transcription failed with code: %d", result);
-        return env->NewStringUTF("");
+        return NewError(env, "Native transcription failed with code: " + std::to_string(result));
     }
 
     if (whisper_full_n_segments(ctx) <= 0) {
         __android_log_write(ANDROID_LOG_INFO, kLogTag, "Transcription finished with no segments.");
-        return env->NewStringUTF("");
+        return NewError(env, "Transcription produced no segments.");
     }
     std::string transcript;
     const int segments = whisper_full_n_segments(ctx);

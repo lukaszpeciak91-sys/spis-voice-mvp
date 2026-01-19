@@ -31,7 +31,11 @@ class WhisperEngine(private val modelFile: File) : Closeable {
 
     fun transcribe(samples: FloatArray): String {
         require(samples.isNotEmpty()) { "Audio samples are empty." }
-        return nativeTranscribe(nativeHandle, samples)
+        val result = nativeTranscribe(nativeHandle, samples)
+        if (result.startsWith(ERROR_PREFIX)) {
+            throw IllegalStateException(result.removePrefix(ERROR_PREFIX).trim())
+        }
+        return result
     }
 
     override fun close() {
@@ -45,6 +49,8 @@ class WhisperEngine(private val modelFile: File) : Closeable {
     private external fun nativeRelease(handle: Long)
 
     companion object {
+        private const val ERROR_PREFIX = "ERROR:"
+
         init {
             System.loadLibrary("whisper_jni")
         }
