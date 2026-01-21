@@ -18,9 +18,10 @@ class WhisperTranscriber(private val context: Context) {
                     val samples = try {
                         WhisperAudioConverter.convertToPcm(audioFile)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Audio conversion failed.", e)
+                        Log.e(TAG, "Audio conversion failed: ${e.message}", e)
+                        val message = e.message ?: "unknown error"
                         throw IllegalArgumentException(
-                            "Transcription failed: unsupported audio format",
+                            "Transcription failed: audio conversion error - $message",
                             e
                         )
                     }
