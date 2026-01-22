@@ -3,6 +3,7 @@
 #include <android/log.h>
 #include <algorithm>
 #include <cstdint>
+#include <chrono>
 #include <string>
 #include <thread>
 #include <vector>
@@ -12,6 +13,7 @@
 namespace {
 constexpr const char* kLogTag = "WhisperJNI";
 constexpr const char* kErrorPrefix = "ERROR:";
+constexpr unsigned int kDefaultThreads = 2;
 
 whisper_context* RequireContext(jlong handle) {
     return reinterpret_cast<whisper_context*>(handle);
@@ -74,7 +76,15 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
     params.print_progress = false;
     params.print_timestamps = false;
     params.translate = false;
-    params.n_threads = std::max(1u, std::min(4u, std::thread::hardware_concurrency()));
+    const unsigned int available_threads = std::max(1u, std::thread::hardware_concurrency());
+    params.n_threads = std::min(kDefaultThreads, available_threads);
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        kLogTag,
+        "Using %u threads (available: %u).",
+        params.n_threads,
+        available_threads
+    );
     __android_log_print(
         ANDROID_LOG_INFO,
         kLogTag,
@@ -83,8 +93,17 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
         params.n_threads
     );
     __android_log_write(ANDROID_LOG_INFO, kLogTag, "Calling whisper_full...");
+    auto start = std::chrono::steady_clock::now();
     int result = whisper_full(ctx, params, samples.data(), sample_count);
-    __android_log_print(ANDROID_LOG_INFO, kLogTag, "whisper_full returned %d.", result);
+    auto end = std::chrono::steady_clock::now();
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        kLogTag,
+        "whisper_full returned %d in %lld ms.",
+        result,
+        static_cast<long long>(elapsed_ms)
+    );
     if (result != 0) {
         __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Transcription failed with code: %d", result);
         return NewError(env, "Native transcription failed with code: " + std::to_string(result));
