@@ -29,9 +29,13 @@ class WhisperEngine(private val modelFile: File) : Closeable {
         check(nativeHandle != 0L) { "Failed to initialize whisper engine." }
     }
 
-    fun transcribe(samples: FloatArray): String {
+    fun transcribe(
+        samples: FloatArray,
+        language: String = DEFAULT_LANGUAGE,
+        threads: Int = DEFAULT_THREADS
+    ): String {
         require(samples.isNotEmpty()) { "Audio samples are empty." }
-        val result = nativeTranscribe(nativeHandle, samples)
+        val result = nativeTranscribe(nativeHandle, samples, language, threads)
         if (result.startsWith(ERROR_PREFIX)) {
             throw IllegalStateException(result.removePrefix(ERROR_PREFIX).trim())
         }
@@ -44,12 +48,19 @@ class WhisperEngine(private val modelFile: File) : Closeable {
 
     private external fun nativeInit(modelPath: String): Long
 
-    private external fun nativeTranscribe(handle: Long, samples: FloatArray): String
+    private external fun nativeTranscribe(
+        handle: Long,
+        samples: FloatArray,
+        language: String,
+        threads: Int
+    ): String
 
     private external fun nativeRelease(handle: Long)
 
     companion object {
         private const val ERROR_PREFIX = "ERROR:"
+        const val DEFAULT_LANGUAGE = "pl"
+        const val DEFAULT_THREADS = 1
 
         init {
             System.loadLibrary("whisper_jni")

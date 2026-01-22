@@ -39,11 +39,29 @@ class WhisperTranscriber(private val context: Context) {
                     )
                 }
 
+                val durationMs = (samples.size.toDouble() / TARGET_SAMPLE_RATE_HZ * 1000).toLong()
+                Log.i(
+                    TAG,
+                    "Decoded samples=${samples.size} durationMs≈${durationMs}"
+                )
+                if (samples.size > MAX_SAMPLES) {
+                    Log.w(TAG, "Rejected TOO_LONG (limit=${MAX_SAMPLES}).")
+                    return@withContext Result.failure(IllegalArgumentException(ERROR_TOO_LONG))
+                }
+
                 deferred = transcriptionScope.async {
                     try {
-                        Log.i(TAG, "Starting JNI transcription with ${samples.size} samples.")
+                        Log.i(
+                            TAG,
+                            "Starting JNI transcription with ${samples.size} samples " +
+                                "(lang=${WhisperEngine.DEFAULT_LANGUAGE}, threads=${WhisperEngine.DEFAULT_THREADS})."
+                        )
                         WhisperEngine(modelFile).use { engine ->
-                            val result = engine.transcribe(samples)
+                            val result = engine.transcribe(
+                                samples,
+                                WhisperEngine.DEFAULT_LANGUAGE,
+                                WhisperEngine.DEFAULT_THREADS
+                            )
                             Log.i(TAG, "JNI transcription returned ${result.length} chars.")
                             result
                         }
@@ -89,6 +107,10 @@ class WhisperTranscriber(private val context: Context) {
         private const val TRANSCRIPTION_TIMEOUT_MS = 30_000L
         private const val ERROR_TIMEOUT = "ERROR_TIMEOUT"
         private const val ERROR_BUSY = "ERROR_BUSY"
+        private const val ERROR_TOO_LONG = "TOO_LONG: offline limit 2.5s"
+        private const val TARGET_SAMPLE_RATE_HZ = 16_000
+        private const val MAX_DURATION_SECONDS = 2.5
+        private val MAX_SAMPLES = (TARGET_SAMPLE_RATE_HZ * MAX_DURATION_SECONDS).toInt()
     }
 
     private val transcriptionInFlight = AtomicBoolean(false)
