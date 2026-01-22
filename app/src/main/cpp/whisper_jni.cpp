@@ -13,7 +13,8 @@
 namespace {
 constexpr const char* kLogTag = "WhisperJNI";
 constexpr const char* kErrorPrefix = "ERROR:";
-constexpr unsigned int kDefaultThreads = 2;
+constexpr unsigned int kDefaultThreads = 1;
+constexpr const char* kDefaultLanguage = "pl";
 
 whisper_context* RequireContext(jlong handle) {
     return reinterpret_cast<whisper_context*>(handle);
@@ -48,7 +49,9 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
     JNIEnv* env,
     jobject /*thiz*/,
     jlong handle,
-    jfloatArray audio_samples
+    jfloatArray audio_samples,
+    jstring language,
+    jint threads
 ) {
     whisper_context* ctx = RequireContext(handle);
     if (!ctx) {
@@ -72,18 +75,37 @@ Java_com_example_myapplication_whisper_WhisperEngine_nativeTranscribe(
 
     whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
 
+    std::string language_code = kDefaultLanguage;
+    if (language != nullptr) {
+        const char* language_chars = env->GetStringUTFChars(language, nullptr);
+        if (language_chars != nullptr && language_chars[0] != '\0') {
+            language_code = language_chars;
+        }
+        env->ReleaseStringUTFChars(language, language_chars);
+    }
+
     params.print_realtime = false;
     params.print_progress = false;
     params.print_timestamps = false;
     params.translate = false;
+    params.detect_language = false;
+    params.language = language_code.c_str();
     const unsigned int available_threads = std::max(1u, std::thread::hardware_concurrency());
-    params.n_threads = std::min(kDefaultThreads, available_threads);
+    const unsigned int requested_threads =
+        threads > 0 ? static_cast<unsigned int>(threads) : kDefaultThreads;
+    params.n_threads = std::min(requested_threads, available_threads);
     __android_log_print(
         ANDROID_LOG_INFO,
         kLogTag,
         "Using %u threads (available: %u).",
         params.n_threads,
         available_threads
+    );
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        kLogTag,
+        "language=%s",
+        language_code.c_str()
     );
     __android_log_print(
         ANDROID_LOG_INFO,
