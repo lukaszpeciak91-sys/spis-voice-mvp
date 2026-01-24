@@ -77,11 +77,21 @@ class VoiceCommandParser(
     }
 
     private fun parseQuantity(text: String): Int? {
-        val tokenization = tokenizer.tokenize(text)
-        val merged = mergeNumberTokens(tokenization.tokens)
-        return merged.firstOrNull { token ->
-            token.type == TokenType.NUMBER && token.numberValue != null
-        }?.numberValue
+        val tokens = tokenizeQuantity(text)
+        if (tokens.isEmpty()) return null
+
+        tokens.firstNotNullOfOrNull { token ->
+            token.toIntOrNull()?.takeIf { it in 0..999 }
+        }?.let { return it }
+
+        for (index in tokens.indices) {
+            val parsed = parseSpokenNumber(tokens, index)
+            if (parsed != null) {
+                return parsed.value
+            }
+        }
+
+        return null
     }
 
     private fun parseUnit(text: String): UnitType? {
@@ -101,54 +111,71 @@ class VoiceCommandParser(
         return null
     }
 
-    private fun mergeNumberTokens(tokens: List<Token>): List<Token> {
-        val result = mutableListOf<Token>()
-        var pendingNumber: Int? = null
-        var pendingFromProvider = false
+    private data class ParsedNumber(val value: Int, val consumed: Int)
 
-        fun flushPending() {
-            if (pendingNumber != null) {
-                result.add(
-                    Token(
-                        value = pendingNumber.toString(),
-                        type = TokenType.NUMBER,
-                        numberValue = pendingNumber,
-                        fromProvider = pendingFromProvider
-                    )
-                )
+    private fun tokenizeQuantity(text: String): List<String> {
+        return text
+            .lowercase()
+            .split(Regex("\\s+"))
+            .map { it.trim(',', '.', ';', ':') }
+            .filter { it.isNotBlank() }
+            .map { normalizePolish(it) }
+    }
+
+    private fun normalizePolish(input: String): String {
+        return buildString(input.length) {
+            for (char in input) {
+                append(polishCharMap[char] ?: char)
             }
-            pendingNumber = null
-            pendingFromProvider = false
         }
+    }
 
-        for (token in tokens) {
-            if (token.type == TokenType.NUMBER && token.numberValue != null) {
-                if (pendingNumber == null) {
-                    pendingNumber = token.numberValue
-                    pendingFromProvider = token.fromProvider
-                } else if (shouldCombineNumbers(pendingNumber ?: 0, token.numberValue)) {
-                    pendingNumber = (pendingNumber ?: 0) + token.numberValue
-                    pendingFromProvider = pendingFromProvider && token.fromProvider
-                } else {
-                    flushPending()
-                    pendingNumber = token.numberValue
-                    pendingFromProvider = token.fromProvider
+    private fun parseSpokenNumber(tokens: List<String>, startIndex: Int): ParsedNumber? {
+        val first = tokens[startIndex]
+        var index = startIndex
+        var value = 0
+
+        hundredsMap[first]?.let { hundreds ->
+            value += hundreds
+            index += 1
+
+            val tens = tokens.getOrNull(index)?.let { tensMap[it] }
+            if (tens != null) {
+                value += tens
+                index += 1
+                val unit = tokens.getOrNull(index)?.let { unitsMap[it] }
+                if (unit != null && unit in 1..9) {
+                    value += unit
+                    index += 1
                 }
-            } else {
-                flushPending()
-                result.add(token)
+                return ParsedNumber(value, index - startIndex)
             }
+
+            val unit = tokens.getOrNull(index)?.let { unitsMap[it] }
+            if (unit != null) {
+                value += unit
+                index += 1
+            }
+            return ParsedNumber(value, index - startIndex)
         }
 
-        flushPending()
-        return result
-    }
+        tensMap[first]?.let { tens ->
+            value += tens
+            index += 1
+            val unit = tokens.getOrNull(index)?.let { unitsMap[it] }
+            if (unit != null && unit in 1..9) {
+                value += unit
+                index += 1
+            }
+            return ParsedNumber(value, index - startIndex)
+        }
 
-    private fun shouldCombineNumbers(left: Int, right: Int): Boolean {
-        return (left >= 100 && right < 100) || (left in tensValues() && right in 1..9)
-    }
+        unitsMap[first]?.let { unit ->
+            return ParsedNumber(unit, 1)
+        }
 
-    private fun tensValues(): Set<Int> = setOf(10, 20, 30, 40, 50, 60, 70, 80, 90)
+        return null
+    }
 
     private data class UnitAlias(val unit: UnitType, val tokens: List<String>)
 
@@ -194,6 +221,67 @@ class VoiceCommandParser(
         )
 
         private val sortedAliases = aliases.sortedByDescending { it.tokens.size }
+
+        private val unitsMap = mapOf(
+            "zero" to 0,
+            "jeden" to 1,
+            "jedna" to 1,
+            "jedno" to 1,
+            "dwa" to 2,
+            "dwie" to 2,
+            "trzy" to 3,
+            "cztery" to 4,
+            "piec" to 5,
+            "szesc" to 6,
+            "siedem" to 7,
+            "osiem" to 8,
+            "dziewiec" to 9,
+            "dziesiec" to 10,
+            "jedenascie" to 11,
+            "dwanascie" to 12,
+            "trzynascie" to 13,
+            "czternascie" to 14,
+            "pietnascie" to 15,
+            "szesnascie" to 16,
+            "siedemnascie" to 17,
+            "osiemnascie" to 18,
+            "dziewietnascie" to 19
+        )
+
+        private val tensMap = mapOf(
+            "dwadziescia" to 20,
+            "trzydziesci" to 30,
+            "czterdziesci" to 40,
+            "piecdziesiat" to 50,
+            "szescdziesiat" to 60,
+            "siedemdziesiat" to 70,
+            "osiemdziesiat" to 80,
+            "dziewiecdziesiat" to 90
+        )
+
+        private val hundredsMap = mapOf(
+            "sto" to 100,
+            "dwiescie" to 200,
+            "trzysta" to 300,
+            "czterysta" to 400,
+            "piecset" to 500,
+            "szescset" to 600,
+            "siedemset" to 700,
+            "osiemset" to 800,
+            "dziewiecset" to 900
+        )
+
+        private val polishCharMap = mapOf(
+            'ą' to 'a',
+            'ć' to 'c',
+            'ę' to 'e',
+            'ł' to 'l',
+            'ń' to 'n',
+            'ó' to 'o',
+            'ś' to 's',
+            'ż' to 'z',
+            'ź' to 'z'
+        )
     }
 }
 
