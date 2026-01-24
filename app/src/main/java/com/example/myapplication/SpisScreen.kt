@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.snapshotFlow
 import com.example.myapplication.parsing.InventoryParser
+import com.example.myapplication.parsing.VoiceCommandParser
+import com.example.myapplication.parsing.VoiceCommandResult
 import com.example.myapplication.vosk.VoskTranscriber
 import kotlinx.coroutines.launch
 
@@ -82,6 +84,7 @@ fun SpisScreen() {
     val context = LocalContext.current
     val recorder = remember { AudioRecorder(context) }
     val parser = remember { InventoryParser() }
+    val voiceCommandParser = remember { VoiceCommandParser() }
     val transcriber = remember { VoskTranscriber(context) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -273,16 +276,33 @@ fun SpisScreen() {
                         val trimmed = result.getOrNull()?.trim().orEmpty()
                         if (result.isSuccess && trimmed.isNotEmpty()) {
                             val currentRow = rows[index]
-                            val updated = applyParsing(
-                                parser = parser,
-                                row = currentRow,
-                                rawText = trimmed,
-                                quantity = currentRow.quantity ?: 1,
-                                unit = currentRow.unit ?: UnitType.SZT,
-                                allowPrefillQuantity = currentRow.quantity == 1,
-                                allowPrefillUnit = currentRow.unit == UnitType.SZT
-                            )
-                            rows[index] = updated
+                            when (val voiceResult = voiceCommandParser.parse(trimmed)) {
+                                is VoiceCommandResult.AddMarker -> {
+                                    rows[index] = SpisRow(
+                                        id = currentRow.id,
+                                        type = RowType.MARKER,
+                                        rawText = voiceResult.name
+                                    )
+                                    Log.i(TAG, "VoiceCommand: ADD_MARKER -> \"${voiceResult.name}\"")
+                                }
+
+                                is VoiceCommandResult.Item -> {
+                                    val resolvedQuantity = voiceResult.quantity ?: currentRow.quantity ?: 1
+                                    val resolvedUnit = voiceResult.unit ?: currentRow.unit ?: UnitType.SZT
+                                    rows[index] = currentRow.copy(
+                                        rawText = voiceResult.name,
+                                        quantity = resolvedQuantity,
+                                        unit = resolvedUnit,
+                                        normalizedText = voiceResult.name.ifBlank { null },
+                                        parseStatus = voiceResult.parseStatus,
+                                        parseDebug = voiceResult.debug
+                                    )
+                                    Log.i(
+                                        TAG,
+                                        "VoiceCommand: ITEM -> \"${voiceResult.name}\" qty=${voiceResult.quantity} unit=${voiceResult.unit?.label}"
+                                    )
+                                }
+                            }
                             file.delete()
                             Log.i(TAG, "Audio cleanup success: ${file.name}")
                         } else {
