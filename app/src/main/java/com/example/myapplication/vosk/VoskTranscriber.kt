@@ -17,14 +17,22 @@ class VoskTranscriber(private val context: Context) {
         return withContext(Dispatchers.Default) {
             if (!transcriptionInFlight.compareAndSet(false, true)) {
                 Log.w(TAG, "BUSY: transcription already running")
+                if (audioFile.exists() && audioFile.delete()) {
+                    Log.w(TAG, "BUSY -> deleted temp audio ${audioFile.absolutePath}")
+                } else {
+                    Log.w(TAG, "BUSY -> failed to delete temp audio ${audioFile.absolutePath}")
+                }
                 return@withContext Result.failure(IllegalStateException(ERROR_BUSY))
             }
 
+            var started = false
             val startTime = System.nanoTime()
+            started = true
             try {
                 Log.i(TAG, "Preparing transcription for ${audioFile.name}")
-                val modelDir = VoskModelProvider.getModelDir(context)
-                Log.i(TAG, "Model ready at ${modelDir.absolutePath}")
+                val model = VoskModelProvider.getModel(context)
+                val modelDir = VoskModelProvider.getCachedModelDir()
+                Log.i(TAG, "Model ready at ${modelDir?.absolutePath ?: "unknown"}")
 
                 val samples = try {
                     VoskAudioConverter.convertToPcm16(audioFile)
@@ -44,7 +52,7 @@ class VoskTranscriber(private val context: Context) {
 
                 return@withContext try {
                     val text = withTimeout(TRANSCRIPTION_TIMEOUT_MS) {
-                        runTranscription(modelDir, samples)
+                        runTranscription(model, samples)
                     }
                     val trimmed = text.trim()
                     val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
@@ -65,19 +73,21 @@ class VoskTranscriber(private val context: Context) {
                     Result.failure(e)
                 }
             } finally {
+                if (started) {
+                    val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
+                    Log.i(TAG, "Transcription finished in ${elapsedMs} ms")
+                }
                 transcriptionInFlight.set(false)
             }
         }
     }
 
-    private fun runTranscription(modelDir: File, samples: ShortArray): String {
-        Model(modelDir.absolutePath).use { model ->
-            Recognizer(model, TARGET_SAMPLE_RATE_HZ.toFloat()).use { recognizer ->
-                recognizer.acceptWaveForm(samples, samples.size)
-                val finalJson = recognizer.finalResult
-                val parsed = gson.fromJson(finalJson, VoskFinalResult::class.java)
-                return parsed.text.orEmpty()
-            }
+    private fun runTranscription(model: Model, samples: ShortArray): String {
+        Recognizer(model, TARGET_SAMPLE_RATE_HZ.toFloat()).use { recognizer ->
+            recognizer.acceptWaveForm(samples, samples.size)
+            val finalJson = recognizer.finalResult
+            val parsed = gson.fromJson(finalJson, VoskFinalResult::class.java)
+            return parsed.text.orEmpty()
         }
     }
 
