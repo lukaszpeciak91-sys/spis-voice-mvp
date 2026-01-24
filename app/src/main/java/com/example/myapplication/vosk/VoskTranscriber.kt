@@ -3,6 +3,7 @@ package com.example.myapplication.vosk
 import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
@@ -67,6 +68,9 @@ class VoskTranscriber(private val context: Context) {
                     Log.e(TAG, "Timeout after ${TRANSCRIPTION_TIMEOUT_MS}ms.", e)
                     Log.i(TAG, "Completed (error) for ${audioFile.name}")
                     Result.failure(IllegalStateException(ERROR_TIMEOUT, e))
+                } catch (e: CancellationException) {
+                    Log.w(TAG, "Transcription cancelled.", e)
+                    throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Transcription failed.", e)
                     Log.i(TAG, "Completed (error) for ${audioFile.name}")
