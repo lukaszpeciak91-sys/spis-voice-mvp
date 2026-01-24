@@ -3,14 +3,8 @@ package com.example.myapplication.parsing
 class CodeModeNormalizer {
     data class Result(val normalized: String)
 
-    fun normalizeIfTriggered(rawText: String): Result? {
-        val triggerMatch = triggerRegex.find(rawText) ?: return null
-        val afterTrigger = rawText.substring(triggerMatch.range.last + 1).trim()
-        if (afterTrigger.isBlank()) {
-            return Result("")
-        }
-
-        val tokens = tokenize(afterTrigger)
+    fun normalize(rawText: String): Result {
+        val tokens = tokenize(rawText)
         if (tokens.isEmpty()) {
             return Result("")
         }
@@ -32,22 +26,10 @@ class CodeModeNormalizer {
 
             parsingLetters = false
 
-            val parsedNumber = SpokenNumberParser.parseNumber(tokens, index)
+            val parsedNumber = parseNumericToken(tokens, index)
             if (parsedNumber != null) {
-                val nextIndex = index + parsedNumber.consumed
-                if (tokens.getOrNull(nextIndex) == "i" && tokens.getOrNull(nextIndex + 1) == "pol") {
-                    numericParts.add("${parsedNumber.value},5")
-                    index = nextIndex + 2
-                } else {
-                    numericParts.add(parsedNumber.value.toString())
-                    index = nextIndex
-                }
-                continue
-            }
-
-            if (token == "pol") {
-                numericParts.add("0,5")
-                index += 1
+                numericParts.add(parsedNumber.value)
+                index += parsedNumber.consumed
                 continue
             }
 
@@ -81,16 +63,41 @@ class CodeModeNormalizer {
             .filter { it.isNotBlank() }
     }
 
-    private companion object {
-        private val triggerRegex = Regex("\\bkod\\b:?", RegexOption.IGNORE_CASE)
+    private data class ParsedNumeric(val value: String, val consumed: Int)
 
+    private fun parseNumericToken(tokens: List<String>, startIndex: Int): ParsedNumeric? {
+        val token = tokens.getOrNull(startIndex) ?: return null
+        if (token == "pol") {
+            return ParsedNumeric("0,5", 1)
+        }
+        if (token.all { it.isDigit() }) {
+            val nextIndex = startIndex + 1
+            if (tokens.getOrNull(nextIndex) == "i" && tokens.getOrNull(nextIndex + 1) == "pol") {
+                return ParsedNumeric("${token},5", 3)
+            }
+            return ParsedNumeric(token, 1)
+        }
+
+        val parsed = SpokenNumberParser.parseSpokenNumber(tokens, startIndex) ?: return null
+        val nextIndex = startIndex + parsed.consumed
+        if (tokens.getOrNull(nextIndex) == "i" && tokens.getOrNull(nextIndex + 1) == "pol") {
+            return ParsedNumeric("${parsed.value},5", parsed.consumed + 2)
+        }
+        return ParsedNumeric(parsed.value.toString(), parsed.consumed)
+    }
+
+    private companion object {
         private val letterMap = mapOf(
             "igrek" to "Y",
             "ygrek" to "Y",
+            "igreg" to "Y",
+            "igrekg" to "Y",
+            "greg" to "Y",
             "de" to "D",
             "ka" to "K",
             "be" to "B",
             "ce" to "C",
+            "zet" to "Z",
             "a" to "A",
             "e" to "E"
         )

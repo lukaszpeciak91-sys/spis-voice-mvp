@@ -22,39 +22,54 @@ class VoiceCommandParser(
             )
         }
 
-        val markerCommand = detectMarkerCommand(trimmed)
-        if (markerCommand != null) {
-            if (markerCommand.markerText.isBlank()) {
-                val debug = listOf("VoiceCommand: ADD_MARKER ignored (empty marker text)")
-                Log.i(VOICE_TAG, debug.first())
-                return VoiceCommandResult.Ignored(
-                    reason = "Brak tekstu markera.",
-                    debug = debug
-                )
-            }
-            val debug = listOf(
-                "VoiceCommand: ADD_MARKER (alias='${markerCommand.alias}') -> \"${markerCommand.markerText}\""
-            )
-            Log.i(VOICE_TAG, debug.first())
-            return VoiceCommandResult.AddMarker(
-                name = markerCommand.markerText,
-                alias = markerCommand.alias,
-                debug = debug
-            )
+        val markerResult = parseMarkerCommand(trimmed)
+        if (markerResult != null) {
+            return markerResult
         }
 
-        val quantityMatch = quantityTriggerRegex.find(trimmed)
-        if (quantityMatch == null) {
-            val debug = listOf("VoiceCommand: no quantity trigger")
+        val quantityResult = parseQuantityCommand(trimmed)
+        if (quantityResult != null) {
+            return quantityResult
+        }
+
+        val debug = listOf("VoiceCommand: no quantity trigger")
+        Log.i(VOICE_TAG, debug.first())
+        return VoiceCommandResult.Item(
+            name = trimmed,
+            quantity = null,
+            unit = null,
+            parseStatus = ParseStatus.OK,
+            debug = debug
+        )
+    }
+
+    fun parseMarkerCommand(text: String): VoiceCommandResult? {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return null
+        val markerCommand = detectMarkerCommand(trimmed) ?: return null
+        if (markerCommand.markerText.isBlank()) {
+            val debug = listOf("VoiceCommand: ADD_MARKER ignored (empty marker text)")
             Log.i(VOICE_TAG, debug.first())
-            return VoiceCommandResult.Item(
-                name = trimmed,
-                quantity = null,
-                unit = null,
-                parseStatus = ParseStatus.OK,
+            return VoiceCommandResult.Ignored(
+                reason = "Brak tekstu markera.",
                 debug = debug
             )
         }
+        val debug = listOf(
+            "VoiceCommand: ADD_MARKER (alias='${markerCommand.alias}') -> \"${markerCommand.markerText}\""
+        )
+        Log.i(VOICE_TAG, debug.first())
+        return VoiceCommandResult.AddMarker(
+            name = markerCommand.markerText,
+            alias = markerCommand.alias,
+            debug = debug
+        )
+    }
+
+    fun parseQuantityCommand(text: String): VoiceCommandResult.Item? {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return null
+        val quantityMatch = quantityTriggerRegex.find(trimmed) ?: return null
 
         val beforeTrigger = trimmed.substring(0, quantityMatch.range.first).trim()
         val afterTrigger = trimmed.substring(quantityMatch.range.last + 1).trim()
@@ -64,7 +79,7 @@ class VoiceCommandParser(
             val debug = listOf("VoiceCommand: quantity trigger without numeric value")
             Log.i(VOICE_TAG, debug.first())
             return VoiceCommandResult.Item(
-                name = trimmed,
+                name = beforeTrigger,
                 quantity = null,
                 unit = null,
                 parseStatus = ParseStatus.WARNING,
