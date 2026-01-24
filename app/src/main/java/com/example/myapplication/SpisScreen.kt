@@ -245,6 +245,7 @@ fun SpisScreen() {
     var pendingExportCsv by remember { mutableStateOf<String?>(null) }
     var catalogMetadata by remember { mutableStateOf<CatalogMetadata?>(null) }
     var catalogError by remember { mutableStateOf<String?>(null) }
+    var forceCodeModeNext by remember { mutableStateOf(false) }
 
     var isRecording by remember { mutableStateOf(false) }
     var lastAudioPath by remember { mutableStateOf<String?>(null) }
@@ -386,11 +387,18 @@ fun SpisScreen() {
         val currentRow = rows[index]
         val trimmed = resultText?.trim().orEmpty()
         if (trimmed.isNotEmpty()) {
-            val routed = commandRouter.route(trimmed)
+            val routed = commandRouter.route(trimmed, forceCodeModeNext)
+            if (routed.route == CommandRouter.Route.CODE && routed.forced) {
+                forceCodeModeNext = false
+            }
             val routeLog = when (routed.route) {
                 CommandRouter.Route.MARKER -> "Route: MARKER"
                 CommandRouter.Route.ILOSC -> "Route: ILOSC"
-                CommandRouter.Route.CODE -> "Route: CODE (alias=${routed.alias})"
+                CommandRouter.Route.CODE -> if (routed.forced) {
+                    "Route: CODE (forced)"
+                } else {
+                    "Route: CODE (alias=${routed.alias})"
+                }
                 CommandRouter.Route.NONE -> "Route: NONE"
             }
             Log.i(TAG, routeLog)
@@ -489,6 +497,18 @@ fun SpisScreen() {
                 .fillMaxWidth()
                 .focusRequester(textFocusRequester)
         )
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FilterChip(
+                selected = forceCodeModeNext,
+                onClick = { forceCodeModeNext = !forceCodeModeNext },
+                label = {
+                    Text("TRYB KODU ${if (forceCodeModeNext) "ON" else "OFF"}")
+                }
+            )
+        }
 
         Spacer(Modifier.height(8.dp))
 
