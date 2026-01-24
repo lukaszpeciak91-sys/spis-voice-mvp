@@ -391,7 +391,16 @@ fun SpisScreen() {
                         type = RowType.MARKER,
                         rawText = voiceResult.name
                     )
-                    Log.i(TAG, "VoiceCommand: ADD_MARKER -> \"${voiceResult.name}\"")
+                    Log.i(
+                        TAG,
+                        "VoiceCommand: ADD_MARKER (alias='${voiceResult.alias}') -> \"${voiceResult.name}\""
+                    )
+                }
+
+                is VoiceCommandResult.Ignored -> {
+                    rows.removeAt(index)
+                    Toast.makeText(context, voiceResult.reason, Toast.LENGTH_SHORT).show()
+                    Log.i(TAG, voiceResult.debug.first())
                 }
 
                 is VoiceCommandResult.Item -> {
