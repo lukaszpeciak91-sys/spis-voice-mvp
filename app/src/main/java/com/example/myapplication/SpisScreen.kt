@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.snapshotFlow
 import com.example.myapplication.parsing.InventoryParser
-import com.example.myapplication.whisper.WhisperTranscriber
+import com.example.myapplication.vosk.VoskTranscriber
 import kotlinx.coroutines.launch
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
@@ -82,7 +82,7 @@ fun SpisScreen() {
     val context = LocalContext.current
     val recorder = remember { AudioRecorder(context) }
     val parser = remember { InventoryParser() }
-    val transcriber = remember { WhisperTranscriber(context) }
+    val transcriber = remember { VoskTranscriber(context) }
     val coroutineScope = rememberCoroutineScope()
 
     var isRecording by remember { mutableStateOf(false) }
