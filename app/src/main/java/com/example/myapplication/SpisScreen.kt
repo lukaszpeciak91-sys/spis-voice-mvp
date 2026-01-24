@@ -311,15 +311,16 @@ fun SpisScreen() {
 
         Spacer(Modifier.height(8.dp))
 
-        Row {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             OutlinedButton(onClick = {
                 val dir = context.externalCacheDir ?: context.cacheDir
                 dir.listFiles()?.forEach { it.delete() }
             }) {
                 Text("Wyczyść audio cache")
             }
-
-            Spacer(Modifier.width(8.dp))
 
             OutlinedButton(onClick = {
                 rows.clear()
@@ -332,12 +333,10 @@ fun SpisScreen() {
                 Text("Wyczyść spis")
             }
 
-            Spacer(Modifier.width(8.dp))
-
-            Button(onClick = {
+            OutlinedButton(onClick = {
                 if (rows.isEmpty()) {
                     Toast.makeText(context, "Brak pozycji do eksportu.", Toast.LENGTH_SHORT).show()
-                    return@Button
+                    return@OutlinedButton
                 }
                 val csv = buildRawCsv(rows.toList())
                 pendingExportCsv = csv
