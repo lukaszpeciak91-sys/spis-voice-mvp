@@ -22,12 +22,25 @@ class VoiceCommandParser(
             )
         }
 
-        val markerMatch = markerRegex.find(trimmed)
-        if (markerMatch != null) {
-            val name = trimmed.substring(markerMatch.range.last + 1).trim().ifBlank { "MARKER" }
-            val debug = listOf("VoiceCommand: ADD_MARKER -> \"$name\"")
+        val markerCommand = detectMarkerCommand(trimmed)
+        if (markerCommand != null) {
+            if (markerCommand.markerText.isBlank()) {
+                val debug = listOf("VoiceCommand: ADD_MARKER ignored (empty marker text)")
+                Log.i(VOICE_TAG, debug.first())
+                return VoiceCommandResult.Ignored(
+                    reason = "Brak tekstu markera.",
+                    debug = debug
+                )
+            }
+            val debug = listOf(
+                "VoiceCommand: ADD_MARKER (alias='${markerCommand.alias}') -> \"${markerCommand.markerText}\""
+            )
             Log.i(VOICE_TAG, debug.first())
-            return VoiceCommandResult.AddMarker(name = name, debug = debug)
+            return VoiceCommandResult.AddMarker(
+                name = markerCommand.markerText,
+                alias = markerCommand.alias,
+                debug = debug
+            )
         }
 
         val quantityMatch = quantityTriggerRegex.find(trimmed)
@@ -133,6 +146,42 @@ class VoiceCommandParser(
             .filter { it.isNotBlank() }
     }
 
+    private fun detectMarkerCommand(text: String): MarkerCommandMatch? {
+        val tokens = tokenizeCommandTokens(text)
+        if (tokens.isEmpty()) return null
+        val candidates = tokens.take(MAX_MARKER_TOKENS)
+        for (alias in markerAliases) {
+            if (alias.tokens.size <= candidates.size &&
+                candidates.subList(0, alias.tokens.size) == alias.tokens
+            ) {
+                val markerText = extractMarkerText(text, alias.tokens.size)
+                return MarkerCommandMatch(
+                    alias = alias.prefix,
+                    markerText = markerText
+                )
+            }
+        }
+        return null
+    }
+
+    private fun tokenizeCommandTokens(text: String): List<String> {
+        return text.split(Regex("\\s+"))
+            .map { it.trim(',', '.', ':').lowercase() }
+            .map { normalizePolish(it) }
+            .filter { it.isNotBlank() }
+    }
+
+    private fun extractMarkerText(text: String, prefixTokenCount: Int): String {
+        if (prefixTokenCount <= 0) return text.trim()
+        val trimmed = text.trim()
+        val matches = Regex("\\S+").findAll(trimmed).toList()
+        if (prefixTokenCount >= matches.size) {
+            return ""
+        }
+        val startIndex = matches[prefixTokenCount].range.first
+        return trimmed.substring(startIndex).trimStart(' ', ':', ',', '.')
+    }
+
     private fun normalizePolish(input: String): String {
         return buildString(input.length) {
             for (char in input) {
@@ -190,10 +239,23 @@ class VoiceCommandParser(
 
     private data class UnitAlias(val unit: UnitType, val tokens: List<String>)
 
+    private data class MarkerAlias(val prefix: String, val tokens: List<String>)
+
+    private data class MarkerCommandMatch(val alias: String, val markerText: String)
+
     private companion object {
-        private val markerRegex = Regex("^\\s*dodaj\\s+marker\\b[:\\s]*", RegexOption.IGNORE_CASE)
         private val quantityTriggerRegex =
             Regex("\\b(ilość|ilosc|ilości|ilosci)\\b", RegexOption.IGNORE_CASE)
+        private const val MAX_MARKER_TOKENS = 6
+
+        private val markerAliases = listOf(
+            MarkerAlias("dodaj marker", listOf("dodaj", "marker")),
+            MarkerAlias("dodaj markier", listOf("dodaj", "markier")),
+            MarkerAlias("dodac marker", listOf("dodac", "marker")),
+            MarkerAlias("dodac markier", listOf("dodac", "markier")),
+            MarkerAlias("duda i marker", listOf("duda", "i", "marker")),
+            MarkerAlias("duda i markier", listOf("duda", "i", "markier"))
+        )
 
         private val aliases = listOf(
             UnitAlias(UnitType.KG, listOf("kg")),
@@ -297,7 +359,9 @@ class VoiceCommandParser(
 }
 
 sealed class VoiceCommandResult {
-    data class AddMarker(val name: String, val debug: List<String>) : VoiceCommandResult()
+    data class AddMarker(val name: String, val alias: String, val debug: List<String>) : VoiceCommandResult()
+
+    data class Ignored(val reason: String, val debug: List<String>) : VoiceCommandResult()
 
     data class Item(
         val name: String,
