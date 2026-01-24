@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -118,6 +119,7 @@ private fun applyParsing(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun SpisScreen() {
 
     var inputText by remember { mutableStateOf("") }
@@ -311,9 +313,10 @@ fun SpisScreen() {
 
         Spacer(Modifier.height(8.dp))
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedButton(onClick = {
                 val dir = context.externalCacheDir ?: context.cacheDir
@@ -342,7 +345,7 @@ fun SpisScreen() {
                 pendingExportCsv = csv
                 exportLauncher.launch(defaultExportFileName())
             }) {
-                Text("Eksportuj CSV")
+                Text("Eksport CSV")
             }
         }
 
