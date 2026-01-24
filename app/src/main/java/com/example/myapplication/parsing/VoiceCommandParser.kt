@@ -46,8 +46,8 @@ class VoiceCommandParser(
         val beforeTrigger = trimmed.substring(0, quantityMatch.range.first).trim()
         val afterTrigger = trimmed.substring(quantityMatch.range.last + 1).trim()
 
-        val quantity = parseQuantity(afterTrigger)
-        if (quantity == null) {
+        val quantityParse = parseQuantity(afterTrigger)
+        if (quantityParse == null) {
             val debug = listOf("VoiceCommand: quantity trigger without numeric value")
             Log.i(VOICE_TAG, debug.first())
             return VoiceCommandResult.Item(
@@ -59,9 +59,9 @@ class VoiceCommandParser(
             )
         }
 
-        val unit = parseUnit(afterTrigger)
+        val unit = parseUnit(afterTrigger, quantityParse)
         val debug = buildList {
-            add("VoiceCommand: parsed quantity=$quantity unit=${unit?.label ?: "none"}")
+            add("VoiceCommand: parsed quantity=${quantityParse.value} unit=${unit?.label ?: "none"}")
             if (unit == null) {
                 add("VoiceCommand: no unit alias found")
             }
@@ -69,37 +69,51 @@ class VoiceCommandParser(
         Log.i(VOICE_TAG, debug.first())
         return VoiceCommandResult.Item(
             name = beforeTrigger,
-            quantity = quantity,
+            quantity = quantityParse.value,
             unit = unit,
             parseStatus = ParseStatus.OK,
             debug = debug
         )
     }
 
-    private fun parseQuantity(text: String): Int? {
-        val tokens = tokenizeQuantity(text)
+    private fun parseQuantity(text: String): ParsedNumber? {
+        val words = tokenizeWords(text)
+        if (words.isEmpty()) return null
+        val tokens = words.map { normalizePolish(it) }
         if (tokens.isEmpty()) return null
 
-        tokens.firstNotNullOfOrNull { token ->
-            token.toIntOrNull()?.takeIf { it in 0..999 }
-        }?.let { return it }
+        for (index in tokens.indices) {
+            val value = tokens[index].toIntOrNull()
+            if (value != null && value in 0..999) {
+                return ParsedNumber(value, 1, index)
+            }
+        }
 
         for (index in tokens.indices) {
             val parsed = parseSpokenNumber(tokens, index)
             if (parsed != null) {
-                return parsed.value
+                return parsed
             }
         }
 
         return null
     }
 
-    private fun parseUnit(text: String): UnitType? {
-        val words = text.split(Regex("\\s+"))
-            .map { it.trim(',', '.', ';', ':').lowercase() }
-            .filter { it.isNotBlank() }
+    private fun parseUnit(text: String, quantityParse: ParsedNumber?): UnitType? {
+        val words = tokenizeWords(text)
         if (words.isEmpty()) return null
+        val remainingWords = if (quantityParse == null) {
+            words
+        } else {
+            words.filterIndexed { index, _ ->
+                index !in quantityParse.startIndex until (quantityParse.startIndex + quantityParse.consumed)
+            }
+        }
+        return parseUnitFromWords(remainingWords)
+    }
 
+    private fun parseUnitFromWords(words: List<String>): UnitType? {
+        if (words.isEmpty()) return null
         for (index in words.indices) {
             for (alias in sortedAliases) {
                 val endIndex = index + alias.tokens.size
@@ -111,15 +125,12 @@ class VoiceCommandParser(
         return null
     }
 
-    private data class ParsedNumber(val value: Int, val consumed: Int)
+    private data class ParsedNumber(val value: Int, val consumed: Int, val startIndex: Int)
 
-    private fun tokenizeQuantity(text: String): List<String> {
-        return text
-            .lowercase()
-            .split(Regex("\\s+"))
-            .map { it.trim(',', '.', ';', ':') }
+    private fun tokenizeWords(text: String): List<String> {
+        return text.split(Regex("\\s+"))
+            .map { it.trim(',', '.', ';', ':').lowercase() }
             .filter { it.isNotBlank() }
-            .map { normalizePolish(it) }
     }
 
     private fun normalizePolish(input: String): String {
@@ -148,7 +159,7 @@ class VoiceCommandParser(
                     value += unit
                     index += 1
                 }
-                return ParsedNumber(value, index - startIndex)
+                return ParsedNumber(value, index - startIndex, startIndex)
             }
 
             val unit = tokens.getOrNull(index)?.let { unitsMap[it] }
@@ -156,7 +167,7 @@ class VoiceCommandParser(
                 value += unit
                 index += 1
             }
-            return ParsedNumber(value, index - startIndex)
+            return ParsedNumber(value, index - startIndex, startIndex)
         }
 
         tensMap[first]?.let { tens ->
@@ -167,11 +178,11 @@ class VoiceCommandParser(
                 value += unit
                 index += 1
             }
-            return ParsedNumber(value, index - startIndex)
+            return ParsedNumber(value, index - startIndex, startIndex)
         }
 
         unitsMap[first]?.let { unit ->
-            return ParsedNumber(unit, 1)
+            return ParsedNumber(unit, 1, startIndex)
         }
 
         return null
