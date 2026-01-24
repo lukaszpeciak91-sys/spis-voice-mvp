@@ -6,7 +6,7 @@ class CommandRouter(
     private val voiceCommandParser: VoiceCommandParser = VoiceCommandParser(),
     private val codeModeNormalizer: CodeModeNormalizer = CodeModeNormalizer()
 ) {
-    fun route(rawText: String): RoutedCommand {
+    fun route(rawText: String, forceCodeMode: Boolean = false): RoutedCommand {
         val trimmed = rawText.trim()
         if (trimmed.isBlank()) {
             return RoutedCommand(
@@ -31,6 +31,18 @@ class CommandRouter(
             return RoutedCommand(route = Route.ILOSC, result = quantityResult)
         }
 
+        if (forceCodeMode) {
+            val normalized = codeModeNormalizer.normalize(trimmed).normalized
+            val item = VoiceCommandResult.Item(
+                name = normalized,
+                quantity = null,
+                unit = null,
+                parseStatus = ParseStatus.OK,
+                debug = listOf("VoiceCommand: code mode")
+            )
+            return RoutedCommand(route = Route.CODE, result = item, forced = true)
+        }
+
         val codeTrigger = detectCodeTrigger(trimmed)
         if (codeTrigger != null) {
             val normalized = codeModeNormalizer.normalize(codeTrigger.afterTrigger).normalized
@@ -48,24 +60,35 @@ class CommandRouter(
     }
 
     private fun detectCodeTrigger(text: String): CodeTrigger? {
-        val match = Regex("^\\S+").find(text) ?: return null
-        val rawToken = match.value
-        val lower = rawToken.lowercase()
-        val normalized = SpokenNumberParser.normalizePolish(lower)
-        val matchedAlias = when {
-            codeAliases.contains(lower) -> lower
-            codeAliasesNormalized.contains(normalized) -> normalized
-            else -> null
-        } ?: return null
-
-        val afterTrigger = text.substring(match.range.last + 1).trim()
-        return CodeTrigger(alias = matchedAlias.trimEnd(':'), afterTrigger = afterTrigger)
+        val tokens = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (tokens.isEmpty()) return null
+        val limit = minOf(tokens.size, CODE_TRIGGER_TOKEN_LIMIT)
+        for (index in 0 until limit) {
+            val token = tokens[index]
+            val trimmedToken = token.trim(':', ',', '.', ';')
+            if (trimmedToken.isBlank()) continue
+            val lower = trimmedToken.lowercase()
+            val normalized = SpokenNumberParser.normalizePolish(lower)
+            val matchedAlias = when {
+                codeAliases.contains(lower) -> lower
+                codeAliasesNormalized.contains(normalized) -> lower
+                else -> null
+            }
+            if (matchedAlias != null) {
+                val remainingTokens = tokens.toMutableList()
+                remainingTokens.removeAt(index)
+                val afterTrigger = remainingTokens.joinToString(" ").trim()
+                return CodeTrigger(alias = matchedAlias, afterTrigger = afterTrigger)
+            }
+        }
+        return null
     }
 
     data class RoutedCommand(
         val route: Route,
         val result: VoiceCommandResult,
-        val alias: String? = null
+        val alias: String? = null,
+        val forced: Boolean = false
     )
 
     enum class Route {
@@ -80,14 +103,11 @@ class CommandRouter(
     private companion object {
         private val codeAliases = setOf(
             "kod",
-            "kod:",
             "kot",
-            "kot:",
             "kat",
-            "kat:",
-            "kąt",
-            "kąt:"
+            "kąt"
         )
         private val codeAliasesNormalized = codeAliases.map { SpokenNumberParser.normalizePolish(it) }.toSet()
+        private const val CODE_TRIGGER_TOKEN_LIMIT = 3
     }
 }
