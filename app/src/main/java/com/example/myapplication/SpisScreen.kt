@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.snapshotFlow
 import com.example.myapplication.parsing.InventoryParser
+import com.example.myapplication.parsing.CodeModeNormalizer
 import com.example.myapplication.parsing.VoiceCommandParser
 import com.example.myapplication.parsing.VoiceCommandResult
 import com.example.myapplication.vosk.TranscriptionStartResult
@@ -240,6 +241,7 @@ fun SpisScreen() {
     val recorder = remember { AudioRecorder(context) }
     val parser = remember { InventoryParser() }
     val voiceCommandParser = remember { VoiceCommandParser() }
+    val codeModeNormalizer = remember { CodeModeNormalizer() }
     var pendingExportCsv by remember { mutableStateOf<String?>(null) }
     var catalogMetadata by remember { mutableStateOf<CatalogMetadata?>(null) }
     var catalogError by remember { mutableStateOf<String?>(null) }
@@ -384,7 +386,14 @@ fun SpisScreen() {
         val currentRow = rows[index]
         val trimmed = resultText?.trim().orEmpty()
         if (trimmed.isNotEmpty()) {
-            when (val voiceResult = voiceCommandParser.parse(trimmed)) {
+            val codeModeResult = codeModeNormalizer.normalizeIfTriggered(trimmed)
+            val processedText = if (codeModeResult != null && codeModeResult.normalized.isNotBlank()) {
+                Log.i(TAG, "CodeMode: output='${codeModeResult.normalized}'")
+                codeModeResult.normalized
+            } else {
+                trimmed
+            }
+            when (val voiceResult = voiceCommandParser.parse(processedText)) {
                 is VoiceCommandResult.AddMarker -> {
                     rows[index] = SpisRow(
                         id = currentRow.id,
