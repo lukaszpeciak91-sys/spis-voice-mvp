@@ -1,7 +1,9 @@
 package com.example.myapplication
 
 import android.Manifest
+import android.net.Uri
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -27,11 +29,63 @@ import com.example.myapplication.parsing.InventoryParser
 import com.example.myapplication.parsing.VoiceCommandParser
 import com.example.myapplication.parsing.VoiceCommandResult
 import com.example.myapplication.vosk.VoskTranscriber
+import java.io.OutputStreamWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 
 private const val TAG = "SpisScreen"
+private const val CSV_HEADER = "row_type;text;qty_counted;unit"
+
+private fun escapeCsv(value: String): String {
+    val needsQuotes = value.contains(';') || value.contains('"') || value.contains('\n') || value.contains('\r')
+    if (!needsQuotes) return value
+    val escaped = value.replace("\"", "\"\"")
+    return "\"$escaped\""
+}
+
+private fun buildRawCsv(rows: List<SpisRow>): String {
+    return buildString {
+        append(CSV_HEADER)
+        append("\n")
+        rows.forEach { row ->
+            when (row.type) {
+                RowType.ITEM -> {
+                    val qty = row.quantity?.toString().orEmpty()
+                    val unitLabel = row.unit?.label.orEmpty()
+                    append(
+                        listOf(
+                            "ITEM",
+                            row.rawText,
+                            qty,
+                            unitLabel
+                        ).joinToString(";") { escapeCsv(it) }
+                    )
+                }
+
+                RowType.MARKER -> {
+                    append(
+                        listOf(
+                            "MARKER",
+                            row.rawText,
+                            "",
+                            ""
+                        ).joinToString(";") { escapeCsv(it) }
+                    )
+                }
+            }
+            append("\n")
+        }
+    }
+}
+
+private fun defaultExportFileName(): String {
+    val formatter = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault())
+    return "spis_export_RAW_${formatter.format(Date())}.csv"
+}
 
 private fun applyParsing(
     parser: InventoryParser,
@@ -87,6 +141,7 @@ fun SpisScreen() {
     val voiceCommandParser = remember { VoiceCommandParser() }
     val transcriber = remember { VoskTranscriber(context) }
     val coroutineScope = rememberCoroutineScope()
+    var pendingExportCsv by remember { mutableStateOf<String?>(null) }
 
     var isRecording by remember { mutableStateOf(false) }
     var lastAudioPath by remember { mutableStateOf<String?>(null) }
@@ -98,6 +153,34 @@ fun SpisScreen() {
             val file = recorder.start()
             isRecording = true
             lastAudioPath = file.name
+        }
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        val csv = pendingExportCsv
+        if (uri == null) {
+            pendingExportCsv = null
+            Toast.makeText(context, "Eksport anulowany.", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        if (csv == null) {
+            Toast.makeText(context, "Brak danych do zapisu.", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        try {
+            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                OutputStreamWriter(outputStream, Charsets.UTF_8).use { writer ->
+                    writer.write(csv)
+                }
+            }
+            Toast.makeText(context, "Zapisano plik: $uri", Toast.LENGTH_SHORT).show()
+        } catch (ex: Exception) {
+            Log.e(TAG, "CSV export failed", ex)
+            Toast.makeText(context, "Nie udało się zapisać CSV.", Toast.LENGTH_SHORT).show()
+        } finally {
+            pendingExportCsv = null
         }
     }
 
@@ -247,6 +330,20 @@ fun SpisScreen() {
                 textFocusRequester.requestFocus()
             }) {
                 Text("Wyczyść spis")
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            Button(onClick = {
+                if (rows.isEmpty()) {
+                    Toast.makeText(context, "Brak pozycji do eksportu.", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
+                val csv = buildRawCsv(rows.toList())
+                pendingExportCsv = csv
+                exportLauncher.launch(defaultExportFileName())
+            }) {
+                Text("Eksportuj CSV")
             }
         }
 
