@@ -1,7 +1,9 @@
 package com.example.myapplication
 
 import android.Manifest
+import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,7 +31,9 @@ import com.example.myapplication.parsing.VoiceCommandResult
 import com.example.myapplication.vosk.TranscriptionStartResult
 import com.example.myapplication.vosk.TranscriptionState
 import com.example.myapplication.vosk.VoskTranscriptionManager
+import java.io.BufferedReader
 import java.io.File
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -41,6 +45,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val TAG = "SpisScreen"
 private const val CSV_HEADER = "row_type;text;qty_counted;unit"
+
+private data class CatalogImportResult(
+    val metadata: CatalogMetadata?,
+    val errorMessage: String?
+)
 
 private fun escapeCsv(value: String): String {
     val needsQuotes = value.contains(';') || value.contains('"') || value.contains('\n') || value.contains('\r')
@@ -89,6 +98,94 @@ private fun defaultExportFileName(): String {
     return "spis_export_RAW_${formatter.format(Date())}.csv"
 }
 
+private fun formatCatalogImportDate(timestamp: Long): String {
+    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    return formatter.format(Date(timestamp))
+}
+
+private fun detectDelimiter(headerLine: String): Char {
+    return when {
+        headerLine.contains(';') -> ';'
+        headerLine.contains(',') -> ','
+        headerLine.contains('\t') -> '\t'
+        else -> ';'
+    }
+}
+
+private fun parseHeaders(headerLine: String): List<String> {
+    val delimiter = detectDelimiter(headerLine)
+    return headerLine.split(delimiter)
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+}
+
+private fun queryDisplayName(context: android.content.Context, uri: Uri): String {
+    val resolver = context.contentResolver
+    val cursor = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+    cursor?.use {
+        if (it.moveToFirst()) {
+            val index = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index != -1) {
+                return it.getString(index)
+            }
+        }
+    }
+    return uri.lastPathSegment ?: "catalog.csv"
+}
+
+private fun readCatalogMetadata(context: android.content.Context, uri: Uri): CatalogImportResult {
+    val resolver = context.contentResolver
+    val filename = queryDisplayName(context, uri)
+    val inputStream = resolver.openInputStream(uri)
+        ?: return CatalogImportResult(null, "Nie udało się otworzyć pliku CSV.")
+    return try {
+        BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).use { reader ->
+            val headerLine = reader.readLine()
+                ?: return CatalogImportResult(null, "Plik CSV jest pusty.")
+            val trimmedHeader = headerLine.trim()
+            if (trimmedHeader.isEmpty()) {
+                return CatalogImportResult(null, "Nagłówek CSV jest pusty.")
+            }
+            val headers = parseHeaders(trimmedHeader)
+            if (headers.isEmpty()) {
+                return CatalogImportResult(null, "Nie udało się odczytać nagłówków CSV.")
+            }
+            var rowCount = 0
+            reader.forEachLine { line ->
+                if (line.isNotBlank()) {
+                    rowCount += 1
+                }
+            }
+            CatalogImportResult(
+                CatalogMetadata(
+                    catalogUri = uri.toString(),
+                    sourceFilename = filename,
+                    rowCount = rowCount,
+                    importedAt = System.currentTimeMillis(),
+                    detectedHeaders = headers
+                ),
+                null
+            )
+        }
+    } catch (ex: Exception) {
+        CatalogImportResult(null, "Nie udało się odczytać CSV.")
+    }
+}
+
+private fun hasCatalogAccess(context: android.content.Context, uri: Uri): Boolean {
+    val resolver = context.contentResolver
+    val hasPermission = resolver.persistedUriPermissions.any { permission ->
+        permission.uri == uri && permission.isReadPermission
+    }
+    if (!hasPermission) return false
+    return try {
+        resolver.openInputStream(uri)?.close()
+        true
+    } catch (_: Exception) {
+        false
+    }
+}
+
 private fun applyParsing(
     parser: InventoryParser,
     row: SpisRow,
@@ -131,6 +228,7 @@ fun SpisScreen() {
     val rows = remember { mutableStateListOf<SpisRow>() }
     var editingId by remember { mutableStateOf<String?>(null) }
     var parseDialogRow by remember { mutableStateOf<SpisRow?>(null) }
+    var showCsvDialog by remember { mutableStateOf(false) }
 
     var showMarkerDialog by remember { mutableStateOf(false) }
     var markerText by remember { mutableStateOf("") }
@@ -143,6 +241,8 @@ fun SpisScreen() {
     val parser = remember { InventoryParser() }
     val voiceCommandParser = remember { VoiceCommandParser() }
     var pendingExportCsv by remember { mutableStateOf<String?>(null) }
+    var catalogMetadata by remember { mutableStateOf<CatalogMetadata?>(null) }
+    var catalogError by remember { mutableStateOf<String?>(null) }
 
     var isRecording by remember { mutableStateOf(false) }
     var lastAudioPath by remember { mutableStateOf<String?>(null) }
@@ -185,6 +285,38 @@ fun SpisScreen() {
         }
     }
 
+    val importCatalogLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) {
+            Toast.makeText(context, "Import anulowany.", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (ex: Exception) {
+            Log.e(TAG, "Persistable permission failed", ex)
+        }
+        val result = readCatalogMetadata(context, uri)
+        val errorMessage = result.errorMessage
+        if (errorMessage != null) {
+            Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
+            return@rememberLauncherForActivityResult
+        }
+        val metadata = result.metadata
+        if (metadata == null) {
+            Toast.makeText(context, "Nie udało się zapisać metadanych katalogu.", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        CatalogStorage.save(context, metadata)
+        catalogMetadata = metadata
+        catalogError = null
+        Toast.makeText(context, "Zaimportowano katalog: ${metadata.sourceFilename}", Toast.LENGTH_SHORT).show()
+    }
+
     LaunchedEffect(Unit) {
         val loaded = ProjectStorage.load(context)
         if (loaded != null) {
@@ -211,6 +343,17 @@ fun SpisScreen() {
             )
         }
         textFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(Unit) {
+        val loadedCatalog = CatalogStorage.load(context)
+        if (loadedCatalog != null) {
+            catalogMetadata = loadedCatalog
+            val uri = Uri.parse(loadedCatalog.catalogUri)
+            if (!hasCatalogAccess(context, uri)) {
+                catalogError = "Catalog file is no longer accessible."
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -419,16 +562,8 @@ fun SpisScreen() {
                 Text("Wyczyść spis")
             }
 
-            OutlinedButton(onClick = {
-                if (rows.isEmpty()) {
-                    Toast.makeText(context, "Brak pozycji do eksportu.", Toast.LENGTH_SHORT).show()
-                    return@OutlinedButton
-                }
-                val csv = buildRawCsv(rows.toList())
-                pendingExportCsv = csv
-                exportLauncher.launch(defaultExportFileName())
-            }) {
-                Text("Eksport CSV")
+            OutlinedButton(onClick = { showCsvDialog = true }) {
+                Text("CSV")
             }
         }
 
@@ -648,6 +783,98 @@ fun SpisScreen() {
             },
             dismissButton = {
                 TextButton(onClick = { showMarkerDialog = false }) { Text("Anuluj") }
+            }
+        )
+    }
+
+    if (showCsvDialog) {
+        AlertDialog(
+            onDismissRequest = { showCsvDialog = false },
+            title = { Text("CSV") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            if (rows.isEmpty()) {
+                                Toast.makeText(context, "Brak pozycji do eksportu.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            val csv = buildRawCsv(rows.toList())
+                            pendingExportCsv = csv
+                            exportLauncher.launch(defaultExportFileName())
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Export CSV")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            importCatalogLauncher.launch(
+                                arrayOf(
+                                    "text/csv",
+                                    "text/comma-separated-values",
+                                    "text/plain",
+                                    "application/csv",
+                                    "application/vnd.ms-excel"
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Import catalog CSV")
+                    }
+
+                    val metadata = catalogMetadata
+                    if (metadata != null) {
+                        Text(
+                            "Catalog loaded: ${metadata.rowCount} rows | imported ${formatCatalogImportDate(metadata.importedAt)}"
+                        )
+                        Text("File: ${metadata.sourceFilename}")
+                        if (catalogError != null) {
+                            Text("Catalog file is not accessible.")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val uri = Uri.parse(metadata.catalogUri)
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, "text/csv")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                try {
+                                    context.startActivity(intent)
+                                } catch (ex: Exception) {
+                                    Toast.makeText(
+                                        context,
+                                        "Nie udało się otworzyć CSV w zewnętrznej aplikacji.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = catalogError == null
+                        ) {
+                            Text("Open catalog CSV")
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                CatalogStorage.clear(context)
+                                catalogMetadata = null
+                                catalogError = null
+                                Toast.makeText(context, "Usunięto katalog.", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Delete catalog")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCsvDialog = false }) {
+                    Text("Zamknij")
+                }
             }
         )
     }

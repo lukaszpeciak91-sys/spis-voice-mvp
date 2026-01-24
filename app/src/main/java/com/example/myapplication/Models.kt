@@ -40,3 +40,11 @@ data class ProjectState(
     val unit: UnitType = UnitType.SZT,
     val rows: List<SpisRow> = emptyList()
 )
+
+data class CatalogMetadata(
+    val catalogUri: String,
+    val sourceFilename: String,
+    val rowCount: Int,
+    val importedAt: Long,
+    val detectedHeaders: List<String>
+)
