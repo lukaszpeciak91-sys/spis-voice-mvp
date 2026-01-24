@@ -22,19 +22,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.snapshotFlow
 import com.example.myapplication.parsing.InventoryParser
 import com.example.myapplication.parsing.VoiceCommandParser
 import com.example.myapplication.parsing.VoiceCommandResult
-import com.example.myapplication.vosk.VoskTranscriber
+import com.example.myapplication.vosk.TranscriptionStartResult
+import com.example.myapplication.vosk.TranscriptionState
+import com.example.myapplication.vosk.VoskTranscriptionManager
+import java.io.File
 import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 
@@ -141,8 +142,6 @@ fun SpisScreen() {
     val recorder = remember { AudioRecorder(context) }
     val parser = remember { InventoryParser() }
     val voiceCommandParser = remember { VoiceCommandParser() }
-    val transcriber = remember { VoskTranscriber(context) }
-    val coroutineScope = rememberCoroutineScope()
     var pendingExportCsv by remember { mutableStateOf<String?>(null) }
 
     var isRecording by remember { mutableStateOf(false) }
@@ -228,6 +227,90 @@ fun SpisScreen() {
             .collect { state ->
                 ProjectStorage.save(context, state)
             }
+    }
+
+    fun handleTranscriptionResult(
+        jobId: String,
+        audioPath: String,
+        resultText: String?,
+        errorMessage: String?
+    ) {
+        val index = rows.indexOfFirst { it.transcriptionJobId == jobId }
+        if (index == -1) return
+        val audioFile = File(audioPath)
+        val currentRow = rows[index]
+        val trimmed = resultText?.trim().orEmpty()
+        if (trimmed.isNotEmpty()) {
+            when (val voiceResult = voiceCommandParser.parse(trimmed)) {
+                is VoiceCommandResult.AddMarker -> {
+                    rows[index] = SpisRow(
+                        id = currentRow.id,
+                        type = RowType.MARKER,
+                        rawText = voiceResult.name
+                    )
+                    Log.i(TAG, "VoiceCommand: ADD_MARKER -> \"${voiceResult.name}\"")
+                }
+
+                is VoiceCommandResult.Item -> {
+                    val resolvedQuantity = voiceResult.quantity ?: currentRow.quantity ?: 1
+                    val resolvedUnit = voiceResult.unit ?: currentRow.unit ?: UnitType.SZT
+                    rows[index] = currentRow.copy(
+                        rawText = voiceResult.name,
+                        quantity = resolvedQuantity,
+                        unit = resolvedUnit,
+                        normalizedText = voiceResult.name.ifBlank { null },
+                        parseStatus = voiceResult.parseStatus,
+                        parseDebug = voiceResult.debug,
+                        transcriptionJobId = null
+                    )
+                    Log.i(
+                        TAG,
+                        "VoiceCommand: ITEM -> \"${voiceResult.name}\" qty=${voiceResult.quantity} unit=${voiceResult.unit?.label}"
+                    )
+                }
+            }
+            audioFile.delete()
+            Log.i(TAG, "Audio cleanup success: ${audioFile.name}")
+        } else {
+            val failureMessage = errorMessage ?: "Transcription failed."
+            rows[index] = currentRow.copy(
+                rawText = "[AUDIO] ${audioFile.name} (${failureMessage})",
+                normalizedText = null,
+                parseStatus = ParseStatus.FAIL,
+                parseDebug = listOf(failureMessage),
+                transcriptionJobId = null
+            )
+            Log.i(TAG, "Audio cleanup skipped (failure): ${audioFile.name}")
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        VoskTranscriptionManager.transcriptionState.collect { state ->
+            when (state) {
+                is TranscriptionState.Success -> handleTranscriptionResult(
+                    jobId = state.jobId,
+                    audioPath = state.audioPath,
+                    resultText = state.text,
+                    errorMessage = null
+                )
+
+                is TranscriptionState.Error -> handleTranscriptionResult(
+                    jobId = state.jobId,
+                    audioPath = state.audioPath,
+                    resultText = null,
+                    errorMessage = state.message
+                )
+
+                is TranscriptionState.Cancelled -> handleTranscriptionResult(
+                    jobId = state.jobId,
+                    audioPath = state.audioPath,
+                    resultText = null,
+                    errorMessage = "Transcription cancelled."
+                )
+
+                else -> Unit
+            }
+        }
     }
 
     Column(
@@ -358,60 +441,31 @@ fun SpisScreen() {
                 val file = recorder.stop()
                 isRecording = false
                 if (file != null) {
-                    val audioRow = SpisRow(
-                        type = RowType.ITEM,
-                        rawText = "[AUDIO] ${file.name} (transcribing...)",
-                        quantity = 1,
-                        unit = UnitType.SZT,
-                        parseStatus = ParseStatus.WARNING,
-                        parseDebug = listOf("Transcribing audio...")
-                    )
-                    rows.add(audioRow)
-                    coroutineScope.launch {
-                        val result = transcriber.transcribe(file)
-                        val index = rows.indexOfFirst { it.id == audioRow.id }
-                        if (index == -1) return@launch
+                    when (val startResult = VoskTranscriptionManager.startTranscription(context, file)) {
+                        is TranscriptionStartResult.Started -> {
+                            val audioRow = SpisRow(
+                                type = RowType.ITEM,
+                                rawText = "[AUDIO] ${file.name} (transcribing...)",
+                                quantity = 1,
+                                unit = UnitType.SZT,
+                                parseStatus = ParseStatus.WARNING,
+                                parseDebug = listOf("Transcribing audio..."),
+                                transcriptionJobId = startResult.jobId
+                            )
+                            rows.add(audioRow)
+                        }
 
-                        val trimmed = result.getOrNull()?.trim().orEmpty()
-                        if (result.isSuccess && trimmed.isNotEmpty()) {
-                            val currentRow = rows[index]
-                            when (val voiceResult = voiceCommandParser.parse(trimmed)) {
-                                is VoiceCommandResult.AddMarker -> {
-                                    rows[index] = SpisRow(
-                                        id = currentRow.id,
-                                        type = RowType.MARKER,
-                                        rawText = voiceResult.name
-                                    )
-                                    Log.i(TAG, "VoiceCommand: ADD_MARKER -> \"${voiceResult.name}\"")
-                                }
-
-                                is VoiceCommandResult.Item -> {
-                                    val resolvedQuantity = voiceResult.quantity ?: currentRow.quantity ?: 1
-                                    val resolvedUnit = voiceResult.unit ?: currentRow.unit ?: UnitType.SZT
-                                    rows[index] = currentRow.copy(
-                                        rawText = voiceResult.name,
-                                        quantity = resolvedQuantity,
-                                        unit = resolvedUnit,
-                                        normalizedText = voiceResult.name.ifBlank { null },
-                                        parseStatus = voiceResult.parseStatus,
-                                        parseDebug = voiceResult.debug
-                                    )
-                                    Log.i(
-                                        TAG,
-                                        "VoiceCommand: ITEM -> \"${voiceResult.name}\" qty=${voiceResult.quantity} unit=${voiceResult.unit?.label}"
-                                    )
-                                }
-                            }
-                            file.delete()
-                            Log.i(TAG, "Audio cleanup success: ${file.name}")
-                        } else {
-                            val failureMessage = result.exceptionOrNull()?.message ?: "Transcription failed."
-                            rows[index] = rows[index].copy(
+                        is TranscriptionStartResult.Busy -> {
+                            val failureMessage = startResult.message
+                            val audioRow = SpisRow(
+                                type = RowType.ITEM,
                                 rawText = "[AUDIO] ${file.name} (${failureMessage})",
-                                normalizedText = null,
+                                quantity = 1,
+                                unit = UnitType.SZT,
                                 parseStatus = ParseStatus.FAIL,
                                 parseDebug = listOf(failureMessage)
                             )
+                            rows.add(audioRow)
                             Log.i(TAG, "Audio cleanup skipped (failure): ${file.name}")
                         }
                     }

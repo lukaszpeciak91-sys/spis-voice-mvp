@@ -31,7 +31,8 @@ data class SpisRow(
     val unit: UnitType? = null,
     val normalizedText: String? = null,
     val parseStatus: ParseStatus? = null,
-    val parseDebug: List<String>? = null
+    val parseDebug: List<String>? = null,
+    val transcriptionJobId: String? = null
 )
 data class ProjectState(
     val inputText: String = "",
