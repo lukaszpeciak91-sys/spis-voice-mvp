@@ -21,6 +21,28 @@ class CommandRouter(
             )
         }
 
+        if (forceCodeMode) {
+            val normalizedResult = codeModeNormalizer.normalize(trimmed)
+            val normalized = normalizedResult.normalized
+            val finalText = if (normalized.isBlank()) trimmed else normalized
+            val item = VoiceCommandResult.Item(
+                name = finalText,
+                quantity = null,
+                unit = null,
+                parseStatus = ParseStatus.OK,
+                debug = listOf("VoiceCommand: code mode")
+            )
+            return RoutedCommand(
+                route = Route.CODE,
+                result = item,
+                forced = true,
+                codeModeRaw = trimmed,
+                codeModeNormalized = normalized,
+                codeModeFinal = finalText,
+                codeModeTokens = normalizedResult.tokens
+            )
+        }
+
         val markerResult = voiceCommandParser.parseMarkerCommand(trimmed)
         if (markerResult != null) {
             return RoutedCommand(route = Route.MARKER, result = markerResult)
@@ -29,18 +51,6 @@ class CommandRouter(
         val quantityResult = voiceCommandParser.parseQuantityCommand(trimmed)
         if (quantityResult != null) {
             return RoutedCommand(route = Route.ILOSC, result = quantityResult)
-        }
-
-        if (forceCodeMode) {
-            val normalized = codeModeNormalizer.normalize(trimmed).normalized
-            val item = VoiceCommandResult.Item(
-                name = normalized,
-                quantity = null,
-                unit = null,
-                parseStatus = ParseStatus.OK,
-                debug = listOf("VoiceCommand: code mode")
-            )
-            return RoutedCommand(route = Route.CODE, result = item, forced = true)
         }
 
         val codeTrigger = detectCodeTrigger(trimmed)
@@ -88,7 +98,11 @@ class CommandRouter(
         val route: Route,
         val result: VoiceCommandResult,
         val alias: String? = null,
-        val forced: Boolean = false
+        val forced: Boolean = false,
+        val codeModeRaw: String? = null,
+        val codeModeNormalized: String? = null,
+        val codeModeFinal: String? = null,
+        val codeModeTokens: List<String> = emptyList()
     )
 
     enum class Route {
