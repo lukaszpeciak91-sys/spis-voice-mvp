@@ -386,10 +386,11 @@ fun SpisScreen() {
         val audioFile = File(audioPath)
         val currentRow = rows[index]
         val trimmed = resultText?.trim().orEmpty()
+        Log.i(TAG, "Transcription complete: forcedCodeMode=$forceCodeModeNext rawTranscript=\"$trimmed\"")
         if (trimmed.isNotEmpty()) {
             val routed = commandRouter.route(trimmed, forceCodeModeNext)
-            if (routed.route == CommandRouter.Route.CODE && routed.forced) {
-                forceCodeModeNext = false
+            if (forceCodeModeNext) {
+                Log.i(TAG, "Transcription normalizedCode=\"${routed.codeModeNormalized}\"")
             }
             val routeLog = when (routed.route) {
                 CommandRouter.Route.MARKER -> "Route: MARKER"
@@ -448,6 +449,9 @@ fun SpisScreen() {
             audioFile.delete()
             Log.i(TAG, "Audio cleanup success: ${audioFile.name}")
         } else {
+            if (forceCodeModeNext) {
+                Log.i(TAG, "Transcription normalizedCode=\"\"")
+            }
             val failureMessage = errorMessage ?: "Transcription failed."
             rows[index] = currentRow.copy(
                 rawText = "[AUDIO] ${audioFile.name} (${failureMessage})",
@@ -510,6 +514,12 @@ fun SpisScreen() {
             FilterChip(
                 selected = forceCodeModeNext,
                 onClick = { forceCodeModeNext = !forceCodeModeNext },
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = Color(0xFFFFCDD2),
+                    labelColor = contentColorFor(Color(0xFFFFCDD2)),
+                    selectedContainerColor = Color(0xFFC8E6C9),
+                    selectedLabelColor = contentColorFor(Color(0xFFC8E6C9))
+                ),
                 label = {
                     Text("TRYB KODU ${if (forceCodeModeNext) "ON" else "OFF"}")
                 }
