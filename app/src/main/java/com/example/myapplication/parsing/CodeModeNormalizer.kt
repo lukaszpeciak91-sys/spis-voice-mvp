@@ -1,89 +1,121 @@
 package com.example.myapplication.parsing
 
 class CodeModeNormalizer {
-    data class Result(val normalized: String)
+    data class Result(val normalized: String, val tokens: List<String>)
 
     fun normalize(rawText: String): Result {
         val tokens = tokenize(rawText)
         if (tokens.isEmpty()) {
-            return Result("")
+            return Result("", emptyList())
         }
 
-        val letters = mutableListOf<String>()
-        val numericParts = mutableListOf<String>()
-        var index = 0
-        var parsingLetters = true
+        val builder = StringBuilder()
+        var segment = 0
+        var hasSegment = false
+        var hasHundreds = false
+        var hasTensOrTeens = false
 
-        while (index < tokens.size) {
-            val token = tokens[index]
+        fun flushSegment() {
+            if (hasSegment) {
+                builder.append(segment)
+            }
+            segment = 0
+            hasSegment = false
+            hasHundreds = false
+            hasTensOrTeens = false
+        }
 
-            val letter = letterMap[token]
-            if (parsingLetters && letter != null) {
-                letters.add(letter)
-                index += 1
+        for (token in tokens) {
+            val normalizedToken = token.lowercase()
+            if (normalizedToken.all { it.isDigit() }) {
+                flushSegment()
+                builder.append(normalizedToken)
                 continue
             }
 
-            parsingLetters = false
-
-            val parsedNumber = parseNumericToken(tokens, index)
-            if (parsedNumber != null) {
-                numericParts.add(parsedNumber.value)
-                index += parsedNumber.consumed
+            if (normalizedToken == "zero") {
+                if (hasSegment && segment > 0) {
+                    flushSegment()
+                }
+                builder.append("0")
                 continue
             }
 
-            val operator = operatorMap[token]
-            if (operator != null) {
-                numericParts.add(operator)
-                index += 1
+            val hundreds = hundredsMap[normalizedToken]
+            if (hundreds != null) {
+                if (hasSegment && (hasHundreds || hasTensOrTeens)) {
+                    flushSegment()
+                }
+                segment += hundreds
+                hasSegment = true
+                hasHundreds = true
                 continue
             }
 
-            index += 1
+            val teens = teensMap[normalizedToken]
+            if (teens != null) {
+                if (hasSegment && hasTensOrTeens) {
+                    flushSegment()
+                }
+                segment += teens
+                hasSegment = true
+                hasTensOrTeens = true
+                continue
+            }
+
+            val tens = tensMap[normalizedToken]
+            if (tens != null) {
+                if (hasSegment && hasTensOrTeens) {
+                    flushSegment()
+                }
+                segment += tens
+                hasSegment = true
+                hasTensOrTeens = true
+                continue
+            }
+
+            val ones = onesMap[normalizedToken]
+            if (ones != null) {
+                if (!hasSegment) {
+                    segment += ones
+                    hasSegment = true
+                    continue
+                }
+                if (hasHundreds) {
+                    segment += ones
+                    continue
+                }
+                if (hasTensOrTeens) {
+                    flushSegment()
+                    segment += ones
+                    hasSegment = true
+                    continue
+                }
+                flushSegment()
+                segment += ones
+                hasSegment = true
+                continue
+            }
+
+            flushSegment()
+            val letter = letterMap[normalizedToken] ?: singleLetter(normalizedToken)
+            if (letter != null) {
+                builder.append(letter)
+                continue
+            }
         }
 
-        val letterBlock = letters.joinToString(separator = "")
-        val numericBlock = numericParts.joinToString(separator = "")
+        flushSegment()
 
-        val normalized = when {
-            letterBlock.isNotBlank() && numericBlock.isNotBlank() -> "${letterBlock} ${numericBlock}"
-            letterBlock.isNotBlank() -> letterBlock
-            numericBlock.isNotBlank() -> numericBlock
-            else -> ""
-        }
-
-        return Result(normalized)
+        val normalized = builder.toString().uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }
+        return Result(normalized, tokens)
     }
 
     private fun tokenize(input: String): List<String> {
-        return input.split(Regex("[\\s:,.]+"))
-            .map { it.trim().lowercase() }
-            .map { SpokenNumberParser.normalizePolish(it) }
+        return input.split(Regex("[\\s\\p{Punct}]+"))
+            .map { it.trim() }
+            .map { SpokenNumberParser.normalizePolish(it.lowercase()) }
             .filter { it.isNotBlank() }
-    }
-
-    private data class ParsedNumeric(val value: String, val consumed: Int)
-
-    private fun parseNumericToken(tokens: List<String>, startIndex: Int): ParsedNumeric? {
-        val token = tokens.getOrNull(startIndex) ?: return null
-        if (token == "pol") {
-            return ParsedNumeric("0,5", 1)
-        }
-        if (token.all { it.isDigit() }) {
-            val nextIndex = startIndex + 1
-            if (tokens.getOrNull(nextIndex) == "i" && tokens.getOrNull(nextIndex + 1) == "pol") {
-                return ParsedNumeric("${token},5", 3)
-            }
-            return ParsedNumeric(token, 1)
-        }
-
-        val parsed = SpokenNumberParser.parseSpokenNumber(tokens, startIndex) ?: return null
-        val nextIndex = startIndex + parsed.consumed
-        if (tokens.getOrNull(nextIndex) == "i" && tokens.getOrNull(nextIndex + 1) == "pol") {
-            return ParsedNumeric("${parsed.value},5", parsed.consumed + 2)
-        }
-        return ParsedNumeric(parsed.value.toString(), parsed.consumed)
     }
 
     private companion object {
@@ -102,11 +134,63 @@ class CodeModeNormalizer {
             "e" to "E"
         )
 
-        private val operatorMap = mapOf(
-            "na" to "x",
-            "razy" to "x",
-            "iks" to "x",
-            "przez" to "x"
+        private val onesMap = mapOf(
+            "zero" to 0,
+            "jeden" to 1,
+            "dwa" to 2,
+            "trzy" to 3,
+            "cztery" to 4,
+            "piec" to 5,
+            "pienc" to 5,
+            "szesc" to 6,
+            "szezdz" to 6,
+            "siedem" to 7,
+            "osiem" to 8,
+            "dziewiec" to 9,
+            "dziewienc" to 9
         )
+
+        private val teensMap = mapOf(
+            "dziesiec" to 10,
+            "jedenascie" to 11,
+            "dwanascie" to 12,
+            "trzynascie" to 13,
+            "czternascie" to 14,
+            "pietnascie" to 15,
+            "szesnascie" to 16,
+            "siedemnascie" to 17,
+            "osiemnascie" to 18,
+            "dziewietnascie" to 19
+        )
+
+        private val tensMap = mapOf(
+            "dwadziescia" to 20,
+            "trzydziesci" to 30,
+            "czterdziesci" to 40,
+            "piecdziesiat" to 50,
+            "szescdziesiat" to 60,
+            "siedemdziesiat" to 70,
+            "osiemdziesiat" to 80,
+            "dziewiecdziesiat" to 90
+        )
+
+        private val hundredsMap = mapOf(
+            "sto" to 100,
+            "dwiescie" to 200,
+            "trzysta" to 300,
+            "czterysta" to 400,
+            "piecset" to 500,
+            "szescset" to 600,
+            "siedemset" to 700,
+            "osiemset" to 800,
+            "dziewiecset" to 900
+        )
+    }
+
+    private fun singleLetter(token: String): String? {
+        if (token.length == 1 && token[0] in 'a'..'z') {
+            return token.uppercase()
+        }
+        return null
     }
 }

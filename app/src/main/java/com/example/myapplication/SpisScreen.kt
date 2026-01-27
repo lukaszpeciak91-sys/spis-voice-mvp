@@ -402,6 +402,12 @@ fun SpisScreen() {
                 CommandRouter.Route.NONE -> "Route: NONE"
             }
             Log.i(TAG, routeLog)
+            if (routed.route == CommandRouter.Route.CODE && routed.forced) {
+                Log.i(TAG, "Code mode (forced) raw: \"${routed.codeModeRaw}\"")
+                Log.i(TAG, "Code mode (forced) tokens: ${routed.codeModeTokens.joinToString(", ")}")
+                Log.i(TAG, "Code mode (forced) normalized: \"${routed.codeModeNormalized}\"")
+                Log.i(TAG, "Code mode (forced) final: \"${routed.codeModeFinal}\"")
+            }
             when (val voiceResult = routed.result) {
                 is VoiceCommandResult.AddMarker -> {
                     rows[index] = SpisRow(
