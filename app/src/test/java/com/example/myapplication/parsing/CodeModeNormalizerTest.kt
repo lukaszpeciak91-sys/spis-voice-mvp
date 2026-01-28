@@ -31,6 +31,34 @@ class CodeModeNormalizerTest {
     }
 
     @Test
+    fun normalizesTensAndOnes() {
+        val result = normalizer.normalize("dwadziescia jeden")
+        assertEquals("21", result.normalized)
+    }
+
+    @Test
+    fun normalizesTensAndOnesVariants() {
+        val thirtySix = normalizer.normalize("trzydziesci szesc")
+        assertEquals("36", thirtySix.normalized)
+        val fiftyNine = normalizer.normalize("piecdziesiat dziewiec")
+        assertEquals("59", fiftyNine.normalized)
+        val ninetyNine = normalizer.normalize("dziewiecdziesiat dziewiec")
+        assertEquals("99", ninetyNine.normalized)
+    }
+
+    @Test
+    fun keepsFullTensSegment() {
+        val result = normalizer.normalize("trzydziesci")
+        assertEquals("30", result.normalized)
+    }
+
+    @Test
+    fun keepsHundredsTensAndOnesRegression() {
+        val result = normalizer.normalize("piecset trzydziesci cztery")
+        assertEquals("534", result.normalized)
+    }
+
+    @Test
     fun normalizesHundredsAndTeens() {
         val result = normalizer.normalize("dziewiecset dziesiec")
         assertEquals("910", result.normalized)

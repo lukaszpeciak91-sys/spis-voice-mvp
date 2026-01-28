@@ -13,7 +13,8 @@ class CodeModeNormalizer {
         var segment = 0
         var hasSegment = false
         var hasHundreds = false
-        var hasTensOrTeens = false
+        var hasTens = false
+        var hasTeens = false
 
         fun flushSegment() {
             if (hasSegment) {
@@ -22,7 +23,8 @@ class CodeModeNormalizer {
             segment = 0
             hasSegment = false
             hasHundreds = false
-            hasTensOrTeens = false
+            hasTens = false
+            hasTeens = false
         }
 
         for (token in tokens) {
@@ -43,7 +45,7 @@ class CodeModeNormalizer {
 
             val hundreds = hundredsMap[normalizedToken]
             if (hundreds != null) {
-                if (hasSegment && (hasHundreds || hasTensOrTeens)) {
+                if (hasSegment && (hasHundreds || hasTens || hasTeens)) {
                     flushSegment()
                 }
                 segment += hundreds
@@ -54,23 +56,23 @@ class CodeModeNormalizer {
 
             val teens = teensMap[normalizedToken]
             if (teens != null) {
-                if (hasSegment && hasTensOrTeens) {
+                if (hasSegment && (hasTens || hasTeens)) {
                     flushSegment()
                 }
                 segment += teens
                 hasSegment = true
-                hasTensOrTeens = true
+                hasTeens = true
                 continue
             }
 
             val tens = tensMap[normalizedToken]
             if (tens != null) {
-                if (hasSegment && hasTensOrTeens) {
+                if (hasSegment && (hasTens || hasTeens)) {
                     flushSegment()
                 }
                 segment += tens
                 hasSegment = true
-                hasTensOrTeens = true
+                hasTens = true
                 continue
             }
 
@@ -85,7 +87,11 @@ class CodeModeNormalizer {
                     segment += ones
                     continue
                 }
-                if (hasTensOrTeens) {
+                if (hasTens) {
+                    segment += ones
+                    continue
+                }
+                if (hasTeens) {
                     flushSegment()
                     segment += ones
                     hasSegment = true
