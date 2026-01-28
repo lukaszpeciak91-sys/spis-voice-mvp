@@ -1,9 +1,11 @@
 package com.example.myapplication.parsing
 
+import android.util.Log
+
 class CodeModeNormalizer {
     data class Result(val normalized: String, val tokens: List<String>)
 
-    fun normalize(rawText: String): Result {
+    fun normalize(rawText: String, enableFuzzy: Boolean = false): Result {
         val tokens = tokenize(rawText)
         if (tokens.isEmpty()) {
             return Result("", emptyList())
@@ -109,6 +111,14 @@ class CodeModeNormalizer {
                 builder.append(letter)
                 continue
             }
+
+            if (enableFuzzy) {
+                val fuzzyChar = fuzzyPrefixMap.entries.firstOrNull { normalizedToken.startsWith(it.key) }?.value
+                if (fuzzyChar != null) {
+                    Log.i(CODE_MODE_TAG, "fuzzyMap: $normalizedToken -> $fuzzyChar")
+                    builder.append(fuzzyChar)
+                }
+            }
         }
 
         flushSegment()
@@ -127,6 +137,7 @@ class CodeModeNormalizer {
     }
 
     private companion object {
+        private const val CODE_MODE_TAG = "CodeModeNormalizer"
         private val letterMap = mapOf(
             "igrek" to "Y",
             "ygrek" to "Y",
@@ -168,6 +179,19 @@ class CodeModeNormalizer {
             "slesz" to "/",
             "ukosnik" to "/",
             "plus" to "+"
+        )
+        private val fuzzyPrefixMap = mapOf(
+            "mysl" to "-",
+            "ukos" to "/",
+            "sles" to "/",
+            "slas" to "/",
+            "fles" to "/",
+            "fal" to "V",
+            "fau" to "V",
+            "fals" to "V",
+            "ku" to "Q",
+            "kiu" to "Q",
+            "kol" to "Q"
         )
 
         private val onesMap = mapOf(
