@@ -111,13 +111,11 @@ class CodeModeNormalizer {
                 builder.append(letter)
                 continue
             }
-
-            if (enableFuzzy) {
-                val fuzzyChar = fuzzyPrefixMap.entries.firstOrNull { normalizedToken.startsWith(it.key) }?.value
-                if (fuzzyChar != null) {
-                    Log.i(CODE_MODE_TAG, "fuzzyMap: $normalizedToken -> $fuzzyChar")
-                    builder.append(fuzzyChar)
-                }
+            val fuzzyLetter = fuzzyYMap(normalizedToken)
+            if (fuzzyLetter != null) {
+                Log.i(CODE_MODE_TAG, "fuzzyYMap: $normalizedToken -> Y")
+                builder.append(fuzzyLetter)
+                continue
             }
         }
 
@@ -125,7 +123,16 @@ class CodeModeNormalizer {
 
         val normalized = builder.toString()
             .uppercase()
-            .filter { it in 'A'..'Z' || it in '0'..'9' || it == '.' || it == '/' || it == '+' || it == '-' }
+            .replace("X", "x")
+            .filter {
+                it in 'A'..'Z' ||
+                    it in '0'..'9' ||
+                    it == '.' ||
+                    it == '/' ||
+                    it == '+' ||
+                    it == '-' ||
+                    it == 'x'
+            }
         return Result(normalized, tokens)
     }
 
@@ -144,6 +151,8 @@ class CodeModeNormalizer {
             "igreg" to "Y",
             "igrekg" to "Y",
             "greg" to "Y",
+            "na" to "x",
+            "razy" to "x",
             "de" to "D",
             "ka" to "K",
             "be" to "B",
@@ -247,10 +256,20 @@ class CodeModeNormalizer {
         )
     }
 
+    private fun fuzzyYMap(token: String): String? {
+        return when {
+            token.startsWith("igr") -> "Y"
+            token == "gry" || token.startsWith("gry") -> "Y"
+            token.startsWith("grec") || token.startsWith("grek") -> "Y"
+            else -> null
+        }
+    }
+
     private fun singleLetter(token: String): String? {
         if (token.length == 1 && token[0] in 'a'..'z') {
             return token.uppercase()
         }
         return null
     }
+
 }
