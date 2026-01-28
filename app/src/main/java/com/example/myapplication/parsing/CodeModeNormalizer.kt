@@ -1,5 +1,7 @@
 package com.example.myapplication.parsing
 
+import android.util.Log
+
 class CodeModeNormalizer {
     data class Result(val normalized: String, val tokens: List<String>)
 
@@ -109,13 +111,28 @@ class CodeModeNormalizer {
                 builder.append(letter)
                 continue
             }
+            val fuzzyLetter = fuzzyYMap(normalizedToken)
+            if (fuzzyLetter != null) {
+                Log.i(CODE_MODE_TAG, "fuzzyYMap: $normalizedToken -> Y")
+                builder.append(fuzzyLetter)
+                continue
+            }
         }
 
         flushSegment()
 
         val normalized = builder.toString()
             .uppercase()
-            .filter { it in 'A'..'Z' || it in '0'..'9' || it == '.' || it == '/' || it == '+' || it == '-' }
+            .replace("X", "x")
+            .filter {
+                it in 'A'..'Z' ||
+                    it in '0'..'9' ||
+                    it == '.' ||
+                    it == '/' ||
+                    it == '+' ||
+                    it == '-' ||
+                    it == 'x'
+            }
         return Result(normalized, tokens)
     }
 
@@ -127,12 +144,16 @@ class CodeModeNormalizer {
     }
 
     private companion object {
+        const val CODE_MODE_TAG = "CodeModeNormalizer"
+
         private val letterMap = mapOf(
             "igrek" to "Y",
             "ygrek" to "Y",
             "igreg" to "Y",
             "igrekg" to "Y",
             "greg" to "Y",
+            "na" to "x",
+            "razy" to "x",
             "de" to "D",
             "ka" to "K",
             "be" to "B",
@@ -223,10 +244,20 @@ class CodeModeNormalizer {
         )
     }
 
+    private fun fuzzyYMap(token: String): String? {
+        return when {
+            token.startsWith("igr") -> "Y"
+            token == "gry" || token.startsWith("gry") -> "Y"
+            token.startsWith("grec") || token.startsWith("grek") -> "Y"
+            else -> null
+        }
+    }
+
     private fun singleLetter(token: String): String? {
         if (token.length == 1 && token[0] in 'a'..'z') {
             return token.uppercase()
         }
         return null
     }
+
 }

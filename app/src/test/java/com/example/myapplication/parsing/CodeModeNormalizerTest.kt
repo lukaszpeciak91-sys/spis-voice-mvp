@@ -119,4 +119,28 @@ class CodeModeNormalizerTest {
         val vResult = normalizer.normalize("fał 2")
         assertEquals("V2", vResult.normalized)
     }
+
+    @Test
+    fun normalizesNaAndRazyAsX() {
+        val naResult = normalizer.normalize("3 na 4")
+        assertEquals("3x4", naResult.normalized)
+        val razyResult = normalizer.normalize("3 razy 4")
+        assertEquals("3x4", razyResult.normalized)
+    }
+
+    @Test
+    fun normalizesFuzzyYAliases() {
+        val greckaResult = normalizer.normalize("grecka")
+        assertEquals("Y", greckaResult.normalized)
+        val igregResult = normalizer.normalize("igreg")
+        assertEquals("Y", igregResult.normalized)
+        val gryResult = normalizer.normalize("gry")
+        assertEquals("Y", gryResult.normalized)
+    }
+
+    @Test
+    fun keepsCodeModeRegressionSample() {
+        val result = normalizer.normalize("a kropka 0204 zet 2035")
+        assertEquals("A.0204Z2035", result.normalized)
+    }
 }
