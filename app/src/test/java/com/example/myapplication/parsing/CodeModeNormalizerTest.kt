@@ -91,4 +91,16 @@ class CodeModeNormalizerTest {
         val vResult = normalizer.normalize("fał 2")
         assertEquals("V2", vResult.normalized)
     }
+
+    @Test
+    fun normalizesFuzzyPrefixesInForcedCodeMode() {
+        val hyphenResult = normalizer.normalize("faul mysl dwanascie", enableFuzzy = true)
+        assertEquals("V-12", hyphenResult.normalized)
+        val hyphenResultAlt = normalizer.normalize("falsz mysl nic dwanascie", enableFuzzy = true)
+        assertEquals("V-12", hyphenResultAlt.normalized)
+        val slashResult = normalizer.normalize("kup flesz trzy", enableFuzzy = true)
+        assertEquals("Q/3", slashResult.normalized)
+        val slashResultAlt = normalizer.normalize("kol ukosnie nic trzy", enableFuzzy = true)
+        assertEquals("Q/3", slashResultAlt.normalized)
+    }
 }

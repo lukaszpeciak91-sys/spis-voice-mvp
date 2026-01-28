@@ -22,7 +22,7 @@ class CommandRouter(
         }
 
         if (forceCodeMode) {
-            val normalizedResult = codeModeNormalizer.normalize(trimmed)
+            val normalizedResult = codeModeNormalizer.normalize(trimmed, enableFuzzy = true)
             val normalized = normalizedResult.normalized
             val finalText = if (normalized.isBlank()) trimmed else normalized
             val item = VoiceCommandResult.Item(
