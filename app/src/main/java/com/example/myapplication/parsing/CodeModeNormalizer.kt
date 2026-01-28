@@ -107,7 +107,9 @@ class CodeModeNormalizer {
 
         flushSegment()
 
-        val normalized = builder.toString().uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }
+        val normalized = builder.toString()
+            .uppercase()
+            .filter { it in 'A'..'Z' || it in '0'..'9' || it == '.' || it == '/' || it == '+' || it == '-' }
         return Result(normalized, tokens)
     }
 
@@ -131,7 +133,35 @@ class CodeModeNormalizer {
             "ce" to "C",
             "zet" to "Z",
             "a" to "A",
-            "e" to "E"
+            "e" to "E",
+            "ef" to "F",
+            "gie" to "G",
+            "ha" to "H",
+            "i" to "I",
+            "jot" to "J",
+            "el" to "L",
+            "em" to "M",
+            "en" to "N",
+            "o" to "O",
+            "pe" to "P",
+            "ku" to "Q",
+            "kiu" to "Q",
+            "q" to "Q",
+            "er" to "R",
+            "es" to "S",
+            "te" to "T",
+            "u" to "U",
+            "fal" to "V",
+            "v" to "V",
+            "wu" to "W",
+            "iks" to "X",
+            "myslnik" to "-",
+            "minus" to "-",
+            "kropka" to ".",
+            "slash" to "/",
+            "slesz" to "/",
+            "ukosnik" to "/",
+            "plus" to "+"
         )
 
         private val onesMap = mapOf(

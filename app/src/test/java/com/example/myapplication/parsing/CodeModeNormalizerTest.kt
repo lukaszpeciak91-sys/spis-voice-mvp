@@ -71,4 +71,24 @@ class CodeModeNormalizerTest {
         val result = normalizer.normalize("pięć sześć siedem")
         assertEquals("567", result.normalized)
     }
+
+    @Test
+    fun normalizesPunctuationTokens() {
+        val hyphenResult = normalizer.normalize("a myślnik 12")
+        assertEquals("A-12", hyphenResult.normalized)
+        val dotResult = normalizer.normalize("a kropka 1")
+        assertEquals("A.1", dotResult.normalized)
+        val slashResult = normalizer.normalize("a slesz 1")
+        assertEquals("A/1", slashResult.normalized)
+        val plusResult = normalizer.normalize("a plus 1")
+        assertEquals("A+1", plusResult.normalized)
+    }
+
+    @Test
+    fun normalizesQAndVAliases() {
+        val qResult = normalizer.normalize("ku 1")
+        assertEquals("Q1", qResult.normalized)
+        val vResult = normalizer.normalize("fał 2")
+        assertEquals("V2", vResult.normalized)
+    }
 }
