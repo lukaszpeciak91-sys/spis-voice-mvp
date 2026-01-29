@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,6 +42,7 @@ import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -270,6 +272,17 @@ fun SpisScreen() {
 
     var isRecording by remember { mutableStateOf(false) }
     var lastAudioPath by remember { mutableStateOf<String?>(null) }
+    var lastAddedId by remember { mutableStateOf<String?>(null) }
+    var highlightExpiresAt by remember { mutableStateOf<Long?>(null) }
+    val listState = rememberLazyListState()
+
+    fun markLastAdded(rowId: String) {
+        if (lastAddedId == rowId) {
+            lastAddedId = null
+        }
+        lastAddedId = rowId
+        highlightExpiresAt = System.currentTimeMillis() + 2500L
+    }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -396,6 +409,25 @@ fun SpisScreen() {
             }
     }
 
+    LaunchedEffect(lastAddedId) {
+        val currentId = lastAddedId ?: return@LaunchedEffect
+        val expiresAt = highlightExpiresAt ?: return@LaunchedEffect
+        val delayMillis = (expiresAt - System.currentTimeMillis()).coerceAtLeast(0L)
+        delay(delayMillis)
+        if (lastAddedId == currentId) {
+            lastAddedId = null
+            highlightExpiresAt = null
+        }
+    }
+
+    LaunchedEffect(lastAddedId, rows.size) {
+        val targetId = lastAddedId ?: return@LaunchedEffect
+        val index = rows.indexOfFirst { it.id == targetId }
+        if (index != -1) {
+            listState.animateScrollToItem(index)
+        }
+    }
+
     fun handleTranscriptionResult(
         jobId: String,
         audioPath: String,
@@ -438,6 +470,7 @@ fun SpisScreen() {
                                 rawText = voiceResult.name
                             )
                             debugCodeModeByRowId.remove(currentRow.id)
+                            markLastAdded(currentRow.id)
                             Log.i(
                                 TAG,
                                 "VoiceCommand: ADD_MARKER (alias='${voiceResult.alias}') -> \"${voiceResult.name}\""
@@ -464,6 +497,7 @@ fun SpisScreen() {
                                 transcriptionJobId = null
                             )
                             debugCodeModeByRowId[currentRow.id] = routed.route == CommandRouter.Route.CODE
+                            markLastAdded(currentRow.id)
                             Log.i(
                                 TAG,
                                 "VoiceCommand: ITEM -> \"${voiceResult.name}\" qty=${voiceResult.quantity} unit=${voiceResult.unit?.label}"
@@ -612,6 +646,7 @@ fun SpisScreen() {
                 )
                 rows.add(newRow)
                 debugCodeModeByRowId[newRow.id] = false
+                markLastAdded(newRow.id)
                 inputText = ""
                 quantity = "1"
                 textFocusRequester.requestFocus()
@@ -682,6 +717,7 @@ fun SpisScreen() {
                                 transcriptionJobId = startResult.jobId
                             )
                             rows.add(audioRow)
+                            markLastAdded(audioRow.id)
                         }
 
                         is TranscriptionStartResult.Busy -> {
@@ -695,6 +731,7 @@ fun SpisScreen() {
                                 parseDebug = listOf(failureMessage)
                             )
                             rows.add(audioRow)
+                            markLastAdded(audioRow.id)
                             Log.i(TAG, "Audio cleanup skipped (failure): ${file.name}")
                         }
                     }
@@ -705,10 +742,49 @@ fun SpisScreen() {
             Text(if (!isRecording) "🎙️ Nagraj" else "⏹ Stop")
         }
 
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = "Powiedz: '[nazwa] ilość 5 szt' lub 'Dodaj marker regał A'.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            if (isRecording) {
+                Surface(
+                    color = Color(0xFFFFCDD2),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = "Nagrywanie…",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFB71C1C),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
 
-        LazyColumn {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.imePadding()
+        ) {
             items(rows, key = { it.id }) { row ->
+                val isHighlighted = row.id == lastAddedId
+                val baseBackground = if (row.type == RowType.MARKER) Color.LightGray else Color.Transparent
+                val highlightColor = Color(0xFFFFF3CD)
+                val rowBackground = if (isHighlighted) highlightColor else baseBackground
 
                 if (row.type == RowType.MARKER) {
                     val isEditingMarker = editingMarkerId == row.id
@@ -716,7 +792,7 @@ fun SpisScreen() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color.LightGray)
+                            .background(rowBackground)
                             .clickable {
                                 editingMarkerId = row.id
                                 editingId = null
@@ -766,6 +842,7 @@ fun SpisScreen() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .background(rowBackground)
                             .clickable {
                                 editingId = row.id
                                 editingMarkerId = null
@@ -939,6 +1016,7 @@ fun SpisScreen() {
                             rawText = name
                         )
                     )
+                    markLastAdded(rows.last().id)
                     showMarkerDialog = false
                     inputText = ""
                     quantity = "1"
