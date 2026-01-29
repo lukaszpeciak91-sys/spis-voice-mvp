@@ -249,6 +249,8 @@ fun SpisScreen() {
     var editingId by remember { mutableStateOf<String?>(null) }
     var parseDialogRow by remember { mutableStateOf<SpisRow?>(null) }
     var showCsvDialog by remember { mutableStateOf(false) }
+    var showClearDialog by remember { mutableStateOf(false) }
+    var pendingDeleteRow by remember { mutableStateOf<SpisRow?>(null) }
 
     var showMarkerDialog by remember { mutableStateOf(false) }
     var markerText by remember { mutableStateOf("") }
@@ -646,12 +648,7 @@ fun SpisScreen() {
             }
 
             OutlinedButton(onClick = {
-                rows.clear()
-                inputText = ""
-                quantity = "1"
-                unit = UnitType.SZT
-                ProjectStorage.clear(context)
-                textFocusRequester.requestFocus()
+                showClearDialog = true
             }) {
                 Text("Wyczyść spis")
             }
@@ -748,8 +745,7 @@ fun SpisScreen() {
                                 TextButton(onClick = { editingMarkerId = null }) { Text("Anuluj") }
 
                                 TextButton(onClick = {
-                                    rows.remove(row)
-                                    editingMarkerId = null
+                                    pendingDeleteRow = row
                                 }) { Text("Usuń") }
                             }
                         } else {
@@ -822,8 +818,7 @@ fun SpisScreen() {
                                 }
 
                                 TextButton(onClick = {
-                                    rows.remove(row)
-                                    debugCodeModeByRowId.remove(row.id)
+                                    pendingDeleteRow = row
                                 }) {
                                     Text("Usuń")
                                 }
@@ -1039,6 +1034,51 @@ fun SpisScreen() {
                 TextButton(onClick = { showCsvDialog = false }) {
                     Text("Zamknij")
                 }
+            }
+        )
+    }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("Wyczyścić spis?") },
+            text = { Text("Ta operacja usunie wszystkie wpisy. Nie można cofnąć.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    rows.clear()
+                    inputText = ""
+                    quantity = "1"
+                    unit = UnitType.SZT
+                    ProjectStorage.clear(context)
+                    textFocusRequester.requestFocus()
+                    showClearDialog = false
+                }) { Text("Wyczyść") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) { Text("Anuluj") }
+            }
+        )
+    }
+
+    pendingDeleteRow?.let { row ->
+        val previewText = row.rawText.ifBlank { "-" }
+        AlertDialog(
+            onDismissRequest = { pendingDeleteRow = null },
+            title = { Text("Usunąć wpis?") },
+            text = { Text(previewText) },
+            confirmButton = {
+                TextButton(onClick = {
+                    rows.remove(row)
+                    if (row.type == RowType.ITEM) {
+                        debugCodeModeByRowId.remove(row.id)
+                    }
+                    editingId = null
+                    editingMarkerId = null
+                    pendingDeleteRow = null
+                }) { Text("Usuń") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteRow = null }) { Text("Anuluj") }
             }
         )
     }
