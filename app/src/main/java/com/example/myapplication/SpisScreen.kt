@@ -22,7 +22,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.snapshotFlow
 import com.example.myapplication.parsing.CommandRouter
@@ -217,6 +219,23 @@ private fun applyParsing(
     )
 }
 
+private data class DebugQuantitySplit(val partA: String, val partB: String)
+
+private fun splitByQuantityMarkerDebug(text: String): DebugQuantitySplit? {
+    val matches = Regex("\\S+").findAll(text)
+    for (match in matches) {
+        val token = match.value.trim(',', '.', ':', ';')
+        if (token.isBlank()) continue
+        val normalized = SpokenNumberParser.normalizePolish(token.lowercase())
+        if (normalized == "ilosc") {
+            val partA = text.substring(0, match.range.first).trim()
+            val partB = text.substring(match.range.last + 1).trim()
+            return DebugQuantitySplit(partA = partA, partB = partB)
+        }
+    }
+    return null
+}
+
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 fun SpisScreen() {
@@ -246,6 +265,8 @@ fun SpisScreen() {
     var catalogMetadata by remember { mutableStateOf<CatalogMetadata?>(null) }
     var catalogError by remember { mutableStateOf<String?>(null) }
     var forceCodeModeNext by remember { mutableStateOf(false) }
+    var debugOverlayEnabled by remember { mutableStateOf(false) }
+    val debugCodeModeByRowId = remember { mutableStateMapOf<String, Boolean>() }
 
     var isRecording by remember { mutableStateOf(false) }
     var lastAudioPath by remember { mutableStateOf<String?>(null) }
@@ -409,42 +430,45 @@ fun SpisScreen() {
                 Log.i(TAG, "Code mode (forced) normalized: \"${routed.codeModeNormalized}\"")
                 Log.i(TAG, "Code mode (forced) final: \"${routed.codeModeFinal}\"")
             }
-            when (val voiceResult = routed.result) {
-                is VoiceCommandResult.AddMarker -> {
-                    rows[index] = SpisRow(
-                        id = currentRow.id,
-                        type = RowType.MARKER,
-                        rawText = voiceResult.name
-                    )
-                    Log.i(
-                        TAG,
-                        "VoiceCommand: ADD_MARKER (alias='${voiceResult.alias}') -> \"${voiceResult.name}\""
-                    )
-                }
+                    when (val voiceResult = routed.result) {
+                        is VoiceCommandResult.AddMarker -> {
+                            rows[index] = SpisRow(
+                                id = currentRow.id,
+                                type = RowType.MARKER,
+                                rawText = voiceResult.name
+                            )
+                            debugCodeModeByRowId.remove(currentRow.id)
+                            Log.i(
+                                TAG,
+                                "VoiceCommand: ADD_MARKER (alias='${voiceResult.alias}') -> \"${voiceResult.name}\""
+                            )
+                        }
 
-                is VoiceCommandResult.Ignored -> {
-                    rows.removeAt(index)
-                    Toast.makeText(context, voiceResult.reason, Toast.LENGTH_SHORT).show()
-                    Log.i(TAG, voiceResult.debug.first())
-                }
+                        is VoiceCommandResult.Ignored -> {
+                            rows.removeAt(index)
+                            debugCodeModeByRowId.remove(currentRow.id)
+                            Toast.makeText(context, voiceResult.reason, Toast.LENGTH_SHORT).show()
+                            Log.i(TAG, voiceResult.debug.first())
+                        }
 
-                is VoiceCommandResult.Item -> {
-                    val resolvedQuantity = voiceResult.quantity ?: currentRow.quantity ?: 1
-                    val resolvedUnit = voiceResult.unit ?: currentRow.unit ?: UnitType.SZT
-                    rows[index] = currentRow.copy(
-                        rawText = voiceResult.name,
-                        quantity = resolvedQuantity,
-                        unit = resolvedUnit,
-                        normalizedText = voiceResult.name.ifBlank { null },
-                        parseStatus = voiceResult.parseStatus,
-                        parseDebug = voiceResult.debug,
-                        transcriptionJobId = null
-                    )
-                    Log.i(
-                        TAG,
-                        "VoiceCommand: ITEM -> \"${voiceResult.name}\" qty=${voiceResult.quantity} unit=${voiceResult.unit?.label}"
-                    )
-                }
+                        is VoiceCommandResult.Item -> {
+                            val resolvedQuantity = voiceResult.quantity ?: currentRow.quantity ?: 1
+                            val resolvedUnit = voiceResult.unit ?: currentRow.unit ?: UnitType.SZT
+                            rows[index] = currentRow.copy(
+                                rawText = voiceResult.name,
+                                quantity = resolvedQuantity,
+                                unit = resolvedUnit,
+                                normalizedText = voiceResult.name.ifBlank { null },
+                                parseStatus = voiceResult.parseStatus,
+                                parseDebug = voiceResult.debug,
+                                transcriptionJobId = null
+                            )
+                            debugCodeModeByRowId[currentRow.id] = routed.route == CommandRouter.Route.CODE
+                            Log.i(
+                                TAG,
+                                "VoiceCommand: ITEM -> \"${voiceResult.name}\" qty=${voiceResult.quantity} unit=${voiceResult.unit?.label}"
+                            )
+                        }
             }
             audioFile.delete()
             Log.i(TAG, "Audio cleanup success: ${audioFile.name}")
@@ -510,18 +534,32 @@ fun SpisScreen() {
 
         Spacer(Modifier.height(8.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        val toggleChipColors = FilterChipDefaults.filterChipColors(
+            containerColor = Color(0xFFFFCDD2),
+            labelColor = contentColorFor(Color(0xFFFFCDD2)),
+            selectedContainerColor = Color(0xFFC8E6C9),
+            selectedLabelColor = contentColorFor(Color(0xFFC8E6C9))
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             FilterChip(
                 selected = forceCodeModeNext,
                 onClick = { forceCodeModeNext = !forceCodeModeNext },
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = Color(0xFFFFCDD2),
-                    labelColor = contentColorFor(Color(0xFFFFCDD2)),
-                    selectedContainerColor = Color(0xFFC8E6C9),
-                    selectedLabelColor = contentColorFor(Color(0xFFC8E6C9))
-                ),
+                colors = toggleChipColors,
                 label = {
                     Text("TRYB KODU ${if (forceCodeModeNext) "ON" else "OFF"}")
+                }
+            )
+
+            FilterChip(
+                selected = debugOverlayEnabled,
+                onClick = { debugOverlayEnabled = !debugOverlayEnabled },
+                colors = toggleChipColors,
+                label = {
+                    Text("DEBUG ${if (debugOverlayEnabled) "ON" else "OFF"}")
                 }
             )
         }
@@ -573,6 +611,7 @@ fun SpisScreen() {
                     allowPrefillUnit = allowPrefillUnit
                 )
                 rows.add(newRow)
+                debugCodeModeByRowId[newRow.id] = false
                 inputText = ""
                 quantity = "1"
                 textFocusRequester.requestFocus()
@@ -759,7 +798,7 @@ fun SpisScreen() {
                                         val quantityManualChange =
                                             editedQuantity != null && editedQuantity != row.quantity
                                         val resolvedQuantity = editedQuantity ?: row.quantity
-                                        rows[index] = applyParsing(
+                                        val updatedRow = applyParsing(
                                             parser = parser,
                                             row = row,
                                             rawText = editText,
@@ -768,6 +807,10 @@ fun SpisScreen() {
                                             allowPrefillQuantity = !quantityManualChange,
                                             allowPrefillUnit = row.unit == UnitType.SZT
                                         )
+                                        rows[index] = updatedRow
+                                        if (debugCodeModeByRowId[updatedRow.id] == null) {
+                                            debugCodeModeByRowId[updatedRow.id] = false
+                                        }
                                     }
                                     editingId = null
                                 }) {
@@ -780,6 +823,7 @@ fun SpisScreen() {
 
                                 TextButton(onClick = {
                                     rows.remove(row)
+                                    debugCodeModeByRowId.remove(row.id)
                                 }) {
                                     Text("Usuń")
                                 }
@@ -801,6 +845,71 @@ fun SpisScreen() {
                                         }
                                 )
                                 Text("${row.rawText} | ${row.quantity} ${row.unit?.label}")
+                            }
+                            if (debugOverlayEnabled) {
+                                val split = splitByQuantityMarkerDebug(row.rawText)
+                                val partA = split?.partA ?: row.rawText
+                                val partB = split?.partB.orEmpty()
+                                val codeMode =
+                                    debugCodeModeByRowId[row.id]
+                                        ?: row.parseDebug?.any { it.contains("code mode", ignoreCase = true) }
+                                        ?: forceCodeModeNext
+                                Spacer(Modifier.height(4.dp))
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFF5F5F5))
+                                        .padding(8.dp)
+                                ) {
+                                    val debugTextStyle = MaterialTheme.typography.labelSmall
+                                    val debugValueStyle = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    val mutedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+
+                                    Text(
+                                        text = "raw: ${row.rawText}",
+                                        style = debugTextStyle,
+                                        color = mutedColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "partA: $partA",
+                                        style = debugValueStyle,
+                                        color = mutedColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "partB: $partB",
+                                        style = debugValueStyle,
+                                        color = mutedColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "code mode: ${if (codeMode) "ON" else "OFF"}",
+                                        style = debugTextStyle,
+                                        color = mutedColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "normalized: ${row.normalizedText ?: row.rawText}",
+                                        style = debugValueStyle,
+                                        color = mutedColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "qty/unit: ${row.quantity} ${row.unit?.label.orEmpty()}",
+                                        style = debugValueStyle,
+                                        color = mutedColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
