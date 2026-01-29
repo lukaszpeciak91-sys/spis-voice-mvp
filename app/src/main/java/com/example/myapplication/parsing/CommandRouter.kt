@@ -1,5 +1,6 @@
 package com.example.myapplication.parsing
 
+import android.util.Log
 import com.example.myapplication.ParseStatus
 
 class CommandRouter(
@@ -22,6 +23,39 @@ class CommandRouter(
         }
 
         if (forceCodeMode) {
+            val split = splitByQuantityMarker(trimmed)
+            if (split != null) {
+                val normalizedResult = codeModeNormalizer.normalize(split.partA, enableFuzzy = true)
+                val normalized = normalizedResult.normalized
+                val finalText = if (normalized.isBlank()) split.partA else normalized
+                val quantityResult = voiceCommandParser.parseQuantityAndUnit(split.partB)
+                Log.i(
+                    ROUTER_TAG,
+                    "VoiceCommand: quantity split partARaw=\"${split.partA}\" partBRaw=\"${split.partB}\""
+                )
+                Log.i(
+                    ROUTER_TAG,
+                    "VoiceCommand: code mode split finalNameOrCode=\"$finalText\" " +
+                        "parsedQty=${quantityResult.quantity} parsedUnit=${quantityResult.unit?.label}"
+                )
+                val item = VoiceCommandResult.Item(
+                    name = finalText,
+                    quantity = quantityResult.quantity,
+                    unit = quantityResult.unit,
+                    parseStatus = quantityResult.parseStatus,
+                    debug = listOf("VoiceCommand: code mode") + quantityResult.debug
+                )
+                return RoutedCommand(
+                    route = Route.CODE,
+                    result = item,
+                    forced = true,
+                    codeModeRaw = split.partA,
+                    codeModeNormalized = normalized,
+                    codeModeFinal = finalText,
+                    codeModeTokens = normalizedResult.tokens
+                )
+            }
+
             val normalizedResult = codeModeNormalizer.normalize(trimmed, enableFuzzy = true)
             val normalized = normalizedResult.normalized
             val finalText = if (normalized.isBlank()) trimmed else normalized
@@ -55,6 +89,30 @@ class CommandRouter(
 
         val codeTrigger = detectCodeTrigger(trimmed)
         if (codeTrigger != null) {
+            val split = splitByQuantityMarker(codeTrigger.afterTrigger)
+            if (split != null) {
+                val normalized = codeModeNormalizer.normalize(split.partA).normalized
+                val finalText = if (normalized.isBlank()) split.partA else normalized
+                val quantityResult = voiceCommandParser.parseQuantityAndUnit(split.partB)
+                Log.i(
+                    ROUTER_TAG,
+                    "VoiceCommand: quantity split partARaw=\"${split.partA}\" partBRaw=\"${split.partB}\""
+                )
+                Log.i(
+                    ROUTER_TAG,
+                    "VoiceCommand: code mode split finalNameOrCode=\"$finalText\" " +
+                        "parsedQty=${quantityResult.quantity} parsedUnit=${quantityResult.unit?.label}"
+                )
+                val item = VoiceCommandResult.Item(
+                    name = finalText,
+                    quantity = quantityResult.quantity,
+                    unit = quantityResult.unit,
+                    parseStatus = quantityResult.parseStatus,
+                    debug = listOf("VoiceCommand: code mode") + quantityResult.debug
+                )
+                return RoutedCommand(route = Route.CODE, result = item, alias = codeTrigger.alias)
+            }
+
             val normalized = codeModeNormalizer.normalize(codeTrigger.afterTrigger).normalized
             val item = VoiceCommandResult.Item(
                 name = normalized,
@@ -114,7 +172,25 @@ class CommandRouter(
 
     private data class CodeTrigger(val alias: String, val afterTrigger: String)
 
+    private data class QuantitySplit(val partA: String, val partB: String)
+
+    private fun splitByQuantityMarker(text: String): QuantitySplit? {
+        val matches = Regex("\\S+").findAll(text)
+        for (match in matches) {
+            val token = match.value.trim(',', '.', ':', ';')
+            if (token.isBlank()) continue
+            val normalized = SpokenNumberParser.normalizePolish(token.lowercase())
+            if (normalized == "ilosc") {
+                val partA = text.substring(0, match.range.first).trim()
+                val partB = text.substring(match.range.last + 1).trim()
+                return QuantitySplit(partA = partA, partB = partB)
+            }
+        }
+        return null
+    }
+
     private companion object {
+        private const val ROUTER_TAG = "CommandRouter"
         private val codeAliases = setOf(
             "kod",
             "kot",
