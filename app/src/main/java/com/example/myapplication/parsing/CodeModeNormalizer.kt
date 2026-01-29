@@ -29,11 +29,21 @@ class CodeModeNormalizer {
             hasTeens = false
         }
 
-        for (token in tokens) {
-            val normalizedToken = token.lowercase()
+        var index = 0
+        while (index < tokens.size) {
+            val gluedToken = findGluedToken(tokens, index)
+            if (gluedToken != null) {
+                flushSegment()
+                builder.append(letterMap.getValue(gluedToken.value))
+                index += gluedToken.length
+                continue
+            }
+
+            val normalizedToken = tokens[index].lowercase()
             if (normalizedToken.all { it.isDigit() }) {
                 flushSegment()
                 builder.append(normalizedToken)
+                index += 1
                 continue
             }
 
@@ -42,6 +52,7 @@ class CodeModeNormalizer {
                     flushSegment()
                 }
                 builder.append("0")
+                index += 1
                 continue
             }
 
@@ -53,6 +64,7 @@ class CodeModeNormalizer {
                 segment += hundreds
                 hasSegment = true
                 hasHundreds = true
+                index += 1
                 continue
             }
 
@@ -64,6 +76,7 @@ class CodeModeNormalizer {
                 segment += teens
                 hasSegment = true
                 hasTeens = true
+                index += 1
                 continue
             }
 
@@ -75,6 +88,7 @@ class CodeModeNormalizer {
                 segment += tens
                 hasSegment = true
                 hasTens = true
+                index += 1
                 continue
             }
 
@@ -83,25 +97,30 @@ class CodeModeNormalizer {
                 if (!hasSegment) {
                     segment += ones
                     hasSegment = true
+                    index += 1
                     continue
                 }
                 if (hasHundreds) {
                     segment += ones
+                    index += 1
                     continue
                 }
                 if (hasTens) {
                     segment += ones
+                    index += 1
                     continue
                 }
                 if (hasTeens) {
                     flushSegment()
                     segment += ones
                     hasSegment = true
+                    index += 1
                     continue
                 }
                 flushSegment()
                 segment += ones
                 hasSegment = true
+                index += 1
                 continue
             }
 
@@ -109,14 +128,18 @@ class CodeModeNormalizer {
             val letter = letterMap[normalizedToken] ?: singleLetter(normalizedToken)
             if (letter != null) {
                 builder.append(letter)
+                index += 1
                 continue
             }
             val fuzzyLetter = fuzzyYMap(normalizedToken)
             if (fuzzyLetter != null) {
                 Log.i(CODE_MODE_TAG, "fuzzyYMap: $normalizedToken -> Y")
                 builder.append(fuzzyLetter)
+                index += 1
                 continue
             }
+
+            index += 1
         }
 
         flushSegment()
@@ -142,6 +165,19 @@ class CodeModeNormalizer {
             .map { SpokenNumberParser.normalizePolish(it.lowercase()) }
             .filter { it.isNotBlank() }
     }
+
+    private fun findGluedToken(tokens: List<String>, startIndex: Int): GluedToken? {
+        val maxWindow = minOf(3, tokens.size - startIndex)
+        for (windowSize in maxWindow downTo 1) {
+            val joined = tokens.subList(startIndex, startIndex + windowSize).joinToString("")
+            if (letterMap.containsKey(joined)) {
+                return GluedToken(value = joined, length = windowSize)
+            }
+        }
+        return null
+    }
+
+    private data class GluedToken(val value: String, val length: Int)
 
     private companion object {
         private const val CODE_MODE_TAG = "CodeModeNormalizer"
