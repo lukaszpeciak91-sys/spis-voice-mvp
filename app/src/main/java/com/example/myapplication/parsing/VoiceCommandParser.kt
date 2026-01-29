@@ -74,29 +74,57 @@ class VoiceCommandParser(
         val beforeTrigger = trimmed.substring(0, quantityMatch.range.first).trim()
         val afterTrigger = trimmed.substring(quantityMatch.range.last + 1).trim()
 
-        val quantityParse = parseQuantity(afterTrigger)
-        if (quantityParse == null) {
-            val debug = listOf("VoiceCommand: quantity trigger without numeric value")
-            Log.i(VOICE_TAG, debug.first())
+        val quantityResult = parseQuantityAndUnit(afterTrigger)
+        if (quantityResult.quantity == null) {
+            Log.i(VOICE_TAG, quantityResult.debug.first())
             return VoiceCommandResult.Item(
                 name = beforeTrigger,
                 quantity = null,
                 unit = null,
-                parseStatus = ParseStatus.WARNING,
-                debug = debug
+                parseStatus = quantityResult.parseStatus,
+                debug = quantityResult.debug
             )
         }
 
-        val unit = parseUnit(afterTrigger, quantityParse)
+        Log.i(VOICE_TAG, quantityResult.debug.first())
+        return VoiceCommandResult.Item(
+            name = beforeTrigger,
+            quantity = quantityResult.quantity,
+            unit = quantityResult.unit,
+            parseStatus = quantityResult.parseStatus,
+            debug = quantityResult.debug
+        )
+    }
+
+    fun parseQuantityAndUnit(text: String): QuantityParseResult {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) {
+            return QuantityParseResult(
+                quantity = null,
+                unit = null,
+                parseStatus = ParseStatus.WARNING,
+                debug = listOf("VoiceCommand: quantity trigger without numeric value")
+            )
+        }
+
+        val quantityParse = parseQuantity(trimmed)
+        if (quantityParse == null) {
+            return QuantityParseResult(
+                quantity = null,
+                unit = null,
+                parseStatus = ParseStatus.WARNING,
+                debug = listOf("VoiceCommand: quantity trigger without numeric value")
+            )
+        }
+
+        val unit = parseUnit(trimmed, quantityParse)
         val debug = buildList {
             add("VoiceCommand: parsed quantity=${quantityParse.value} unit=${unit?.label ?: "none"}")
             if (unit == null) {
                 add("VoiceCommand: no unit alias found")
             }
         }
-        Log.i(VOICE_TAG, debug.first())
-        return VoiceCommandResult.Item(
-            name = beforeTrigger,
+        return QuantityParseResult(
             quantity = quantityParse.value,
             unit = unit,
             parseStatus = ParseStatus.OK,
@@ -202,6 +230,13 @@ class VoiceCommandParser(
     private data class MarkerAlias(val prefix: String, val tokens: List<String>)
 
     private data class MarkerCommandMatch(val alias: String, val markerText: String)
+
+    data class QuantityParseResult(
+        val quantity: Int?,
+        val unit: UnitType?,
+        val parseStatus: ParseStatus,
+        val debug: List<String>
+    )
 
     private companion object {
         private val quantityTriggerRegex =
