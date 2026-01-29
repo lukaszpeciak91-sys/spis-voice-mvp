@@ -111,6 +111,16 @@ class CodeModeNormalizerTest {
     }
 
     @Test
+    fun normalizesSlashAndHyphenVariantsInCodeMode() {
+        val slashResult = normalizer.normalize("ceha cztery myślnik sto pięćdziesiąt slash bax")
+        assertEquals("CH4-150/BAX", slashResult.normalized)
+        val altSlashResult = normalizer.normalize("ch cztery pauza sto pięćdziesiąt ukośnik bax")
+        assertEquals("CH4-150/BAX", altSlashResult.normalized)
+        val minusResult = normalizer.normalize("A minus 12")
+        assertEquals("A-12", minusResult.normalized)
+    }
+
+    @Test
     fun normalizesQAndVAliases() {
         val qResult = normalizer.normalize("ku 1")
         assertEquals("Q1", qResult.normalized)
