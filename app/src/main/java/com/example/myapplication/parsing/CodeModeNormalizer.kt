@@ -46,6 +46,19 @@ class CodeModeNormalizer {
             }
 
             val normalizedToken = tokens[index].lowercase()
+            val slashMatch = matchSlashToken(tokens, index)
+            if (slashMatch != null) {
+                flushSegment()
+                builder.append("/")
+                index += slashMatch
+                continue
+            }
+            if (hyphenTokens.contains(normalizedToken)) {
+                flushSegment()
+                builder.append("-")
+                index += 1
+                continue
+            }
             if (normalizedToken.any { it == ',' || it == '/' }) {
                 flushSegment()
                 builder.append(normalizedToken)
@@ -172,6 +185,18 @@ class CodeModeNormalizer {
         return Result(normalized, tokens)
     }
 
+    private fun matchSlashToken(tokens: List<String>, index: Int): Int? {
+        val token = tokens.getOrNull(index) ?: return null
+        val nextToken = tokens.getOrNull(index + 1) ?: return null
+        if (token == "lamane" && nextToken == "przez") {
+            return 2
+        }
+        if (slashTokens.contains(token)) {
+            return 1
+        }
+        return null
+    }
+
     private fun tokenize(input: String): List<String> {
         return input.split(Regex("[\\s\\p{Punct}]+"))
             .map { it.trim() }
@@ -289,8 +314,10 @@ class CodeModeNormalizer {
             "ka" to "K",
             "be" to "B",
             "ce" to "C",
+            "ceha" to "CH",
             "zet" to "Z",
             "a" to "A",
+            "ch" to "CH",
             "e" to "E",
             "ef" to "F",
             "gie" to "G",
@@ -313,10 +340,21 @@ class CodeModeNormalizer {
             "v" to "V",
             "wu" to "W",
             "iks" to "X",
-            "myslnik" to "-",
-            "minus" to "-",
             "kropka" to ".",
             "plus" to "+"
+        )
+        private val slashTokens = setOf(
+            "slash",
+            "slesh",
+            "ukosnik",
+            "lamane",
+            "lamaneprzez"
+        )
+        private val hyphenTokens = setOf(
+            "myslnik",
+            "minus",
+            "pauza",
+            "kreska"
         )
         private val fuzzyPrefixMap = mapOf(
             "mysl" to "-",
