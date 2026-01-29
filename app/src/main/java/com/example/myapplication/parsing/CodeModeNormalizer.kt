@@ -6,7 +6,13 @@ class CodeModeNormalizer {
     data class Result(val normalized: String, val tokens: List<String>)
 
     fun normalize(rawText: String, enableFuzzy: Boolean = false): Result {
-        val tokens = tokenize(rawText)
+        val trimmed = rawText.trim()
+        if (trimmed.isNotEmpty() && trimmed.any { it.isDigit() } && trimmed.none { it.isWhitespace() }) {
+            val normalized = trimmed.uppercase().replace("X", "x")
+            return Result(normalized, emptyList())
+        }
+
+        val tokens = normalizeFractions(tokenize(rawText))
         if (tokens.isEmpty()) {
             return Result("", emptyList())
         }
@@ -40,6 +46,12 @@ class CodeModeNormalizer {
             }
 
             val normalizedToken = tokens[index].lowercase()
+            if (normalizedToken.any { it == ',' || it == '/' }) {
+                flushSegment()
+                builder.append(normalizedToken)
+                index += 1
+                continue
+            }
             if (normalizedToken.all { it.isDigit() }) {
                 flushSegment()
                 builder.append(normalizedToken)
@@ -151,6 +163,7 @@ class CodeModeNormalizer {
                 it in 'A'..'Z' ||
                     it in '0'..'9' ||
                     it == '.' ||
+                    it == ',' ||
                     it == '/' ||
                     it == '+' ||
                     it == '-' ||
@@ -164,6 +177,89 @@ class CodeModeNormalizer {
             .map { it.trim() }
             .map { SpokenNumberParser.normalizePolish(it.lowercase()) }
             .filter { it.isNotBlank() }
+    }
+
+    private fun normalizeFractions(tokens: List<String>): List<String> {
+        val normalized = mutableListOf<String>()
+        var index = 0
+        while (index < tokens.size) {
+            val token = tokens[index]
+            if (token == "poltora") {
+                normalized.add("1,5")
+                index += 1
+                continue
+            }
+
+            val number = parseNumberUpTo99(tokens, index)
+            if (number != null) {
+                val afterNumber = index + number.consumed
+                if (tokens.getOrNull(afterNumber) == "i") {
+                    val afterI = afterNumber + 1
+                    if (tokens.getOrNull(afterI) == "pol") {
+                        normalized.add("${number.value},5")
+                        index = afterI + 1
+                        continue
+                    }
+                    val fraction = parseOrdinalFraction(tokens, afterI)
+                    if (fraction != null) {
+                        val decimalPart = when {
+                            fraction.numerator == 1 && fraction.denominator == 2 -> "5"
+                            fraction.numerator == 3 && fraction.denominator == 4 -> "75"
+                            else -> null
+                        }
+                        if (decimalPart != null) {
+                            normalized.add("${number.value},$decimalPart")
+                            index = afterI + fraction.consumed
+                            continue
+                        }
+                    }
+                }
+
+                if (tokens.getOrNull(afterNumber) == "lamane") {
+                    var denominatorIndex = afterNumber + 1
+                    if (tokens.getOrNull(denominatorIndex) == "przez") {
+                        denominatorIndex += 1
+                    }
+                    val denominator = parseNumberUpTo99(tokens, denominatorIndex)
+                    if (denominator != null) {
+                        normalized.add("${number.value}/${denominator.value}")
+                        index = denominatorIndex + denominator.consumed
+                        continue
+                    }
+                }
+
+                val fraction = parseOrdinalFraction(tokens, afterNumber)
+                if (fraction != null) {
+                    normalized.add("${number.value}/${fraction.denominator}")
+                    index = afterNumber + fraction.consumed
+                    continue
+                }
+            }
+
+            normalized.add(token)
+            index += 1
+        }
+        return normalized
+    }
+
+    private fun parseNumberUpTo99(tokens: List<String>, startIndex: Int): SpokenNumberParser.ParsedNumber? {
+        val parsed = SpokenNumberParser.parseNumber(tokens, startIndex) ?: return null
+        if (parsed.value in 1..99) {
+            return parsed
+        }
+        return null
+    }
+
+    private data class FractionParse(val numerator: Int, val denominator: Int, val consumed: Int)
+
+    private fun parseOrdinalFraction(tokens: List<String>, startIndex: Int): FractionParse? {
+        val numerator = parseNumberUpTo99(tokens, startIndex) ?: return null
+        val denominatorToken = tokens.getOrNull(startIndex + numerator.consumed) ?: return null
+        val denominator = ordinalDenominatorMap[denominatorToken] ?: return null
+        if (denominator in 1..99) {
+            return FractionParse(numerator.value, denominator, numerator.consumed + 1)
+        }
+        return null
     }
 
     private fun findGluedToken(tokens: List<String>, startIndex: Int): GluedToken? {
@@ -220,17 +316,10 @@ class CodeModeNormalizer {
             "myslnik" to "-",
             "minus" to "-",
             "kropka" to ".",
-            "slash" to "/",
-            "slesz" to "/",
-            "ukosnik" to "/",
             "plus" to "+"
         )
         private val fuzzyPrefixMap = mapOf(
             "mysl" to "-",
-            "ukos" to "/",
-            "sles" to "/",
-            "slas" to "/",
-            "fles" to "/",
             "fal" to "V",
             "fau" to "V",
             "fals" to "V",
@@ -289,6 +378,36 @@ class CodeModeNormalizer {
             "siedemset" to 700,
             "osiemset" to 800,
             "dziewiecset" to 900
+        )
+
+        private val ordinalDenominatorMap = mapOf(
+            "drugi" to 2,
+            "druga" to 2,
+            "drugie" to 2,
+            "trzeci" to 3,
+            "trzecia" to 3,
+            "trzecie" to 3,
+            "czwarty" to 4,
+            "czwarta" to 4,
+            "czwarte" to 4,
+            "piaty" to 5,
+            "piata" to 5,
+            "piate" to 5,
+            "szosty" to 6,
+            "szosta" to 6,
+            "szoste" to 6,
+            "siodmy" to 7,
+            "siodma" to 7,
+            "siodme" to 7,
+            "osmy" to 8,
+            "osma" to 8,
+            "osme" to 8,
+            "dziewiaty" to 9,
+            "dziewiata" to 9,
+            "dziewiate" to 9,
+            "dziesiaty" to 10,
+            "dziesiata" to 10,
+            "dziesiate" to 10
         )
     }
 
