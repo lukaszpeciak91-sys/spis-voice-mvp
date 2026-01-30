@@ -27,6 +27,7 @@ data class SpisRow(
     val id: String = UUID.randomUUID().toString(),
     val type: RowType,
     val rawText: String = "",
+    val voskRawText: String? = null,
     val quantity: Int? = null,
     val unit: UnitType? = null,
     val normalizedText: String? = null,
