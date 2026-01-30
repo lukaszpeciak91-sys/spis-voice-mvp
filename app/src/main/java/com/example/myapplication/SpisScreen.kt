@@ -223,12 +223,25 @@ private fun applyParsing(
 
 private data class DebugQuantitySplit(val partA: String, val partB: String)
 
+private fun normalizePolishToken(token: String): String {
+    return token.lowercase()
+        .replace('ą', 'a')
+        .replace('ć', 'c')
+        .replace('ę', 'e')
+        .replace('ł', 'l')
+        .replace('ń', 'n')
+        .replace('ó', 'o')
+        .replace('ś', 's')
+        .replace('ż', 'z')
+        .replace('ź', 'z')
+}
+
 private fun splitByQuantityMarkerDebug(text: String): DebugQuantitySplit? {
     val matches = Regex("\\S+").findAll(text)
     for (match in matches) {
         val token = match.value.trim(',', '.', ':', ';')
         if (token.isBlank()) continue
-        val normalized = SpokenNumberParser.normalizePolish(token.lowercase())
+        val normalized = normalizePolishToken(token)
         if (normalized == "ilosc") {
             val partA = text.substring(0, match.range.first).trim()
             val partB = text.substring(match.range.last + 1).trim()
