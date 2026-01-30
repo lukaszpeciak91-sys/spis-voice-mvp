@@ -453,10 +453,11 @@ fun SpisScreen() {
         if (index == -1) return
         val audioFile = File(audioPath)
         val currentRow = rows[index]
-        val trimmed = resultText?.trim().orEmpty()
-        Log.i(TAG, "Transcription complete: forcedCodeMode=$forceCodeModeNext rawTranscript=\"$trimmed\"")
-        if (trimmed.isNotEmpty()) {
-            val routed = commandRouter.route(trimmed, forceCodeModeNext)
+        val voskRawText = resultText.orEmpty()
+        val routerInput = voskRawText.trim()
+        Log.i(TAG, "Transcription complete: forcedCodeMode=$forceCodeModeNext rawTranscript=\"$voskRawText\"")
+        if (routerInput.isNotEmpty()) {
+            val routed = commandRouter.route(routerInput, forceCodeModeNext)
             if (forceCodeModeNext) {
                 Log.i(TAG, "Transcription normalizedCode=\"${routed.codeModeNormalized}\"")
             }
@@ -482,7 +483,8 @@ fun SpisScreen() {
                             rows[index] = SpisRow(
                                 id = currentRow.id,
                                 type = RowType.MARKER,
-                                rawText = voiceResult.name
+                                rawText = voiceResult.name,
+                                voskRawText = voskRawText
                             )
                             debugCodeModeByRowId.remove(currentRow.id)
                             markLastAdded(currentRow.id)
@@ -504,6 +506,7 @@ fun SpisScreen() {
                             val resolvedUnit = voiceResult.unit ?: currentRow.unit ?: UnitType.SZT
                             rows[index] = currentRow.copy(
                                 rawText = voiceResult.name,
+                                voskRawText = voskRawText,
                                 quantity = resolvedQuantity,
                                 unit = resolvedUnit,
                                 normalizedText = voiceResult.name.ifBlank { null },
@@ -528,6 +531,7 @@ fun SpisScreen() {
             val failureMessage = errorMessage ?: "Transcription failed."
             rows[index] = currentRow.copy(
                 rawText = "[AUDIO] ${audioFile.name} (${failureMessage})",
+                voskRawText = voskRawText.ifBlank { currentRow.voskRawText },
                 normalizedText = null,
                 parseStatus = ParseStatus.FAIL,
                 parseDebug = listOf(failureMessage),
@@ -932,8 +936,10 @@ fun SpisScreen() {
                                 Text("${row.rawText} | ${row.quantity} ${row.unit?.label}")
                             }
                             if (debugOverlayEnabled) {
-                                val split = splitByQuantityMarkerDebug(row.rawText)
-                                val partA = split?.partA ?: row.rawText
+                                val voskRawText = row.voskRawText?.ifBlank { null }
+                                val routerInput = (voskRawText ?: row.rawText).trim()
+                                val split = splitByQuantityMarkerDebug(routerInput)
+                                val partA = split?.partA ?: routerInput
                                 val partB = split?.partB.orEmpty()
                                 val codeMode =
                                     debugCodeModeByRowId[row.id]
@@ -953,8 +959,15 @@ fun SpisScreen() {
                                     val mutedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
 
                                     Text(
-                                        text = "raw: ${row.rawText}",
+                                        text = "VOSK RAW: ${voskRawText ?: "-"}",
                                         style = debugTextStyle,
+                                        color = mutedColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "ROUTER INPUT: $routerInput",
+                                        style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -974,21 +987,21 @@ fun SpisScreen() {
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "code mode: ${if (codeMode) "ON" else "OFF"}",
+                                        text = "codeMode: ${if (codeMode) "ON" else "OFF"}",
                                         style = debugTextStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "normalized: ${row.normalizedText ?: row.rawText}",
+                                        text = "normalizedA: ${row.normalizedText ?: partA}",
                                         style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "qty/unit: ${row.quantity} ${row.unit?.label.orEmpty()}",
+                                        text = "qty / unit: ${row.quantity} ${row.unit?.label.orEmpty()}",
                                         style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
