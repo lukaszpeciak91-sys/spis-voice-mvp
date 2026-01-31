@@ -23,6 +23,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -101,6 +103,11 @@ private fun buildRawCsv(rows: List<SpisRow>): String {
 private fun defaultExportFileName(): String {
     val formatter = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault())
     return "spis_export_RAW_${formatter.format(Date())}.csv"
+}
+
+private fun defaultDebugExportFileName(): String {
+    val formatter = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault())
+    return "spis_debug_${formatter.format(Date())}.txt"
 }
 
 private fun formatCatalogImportDate(timestamp: Long): String {
@@ -278,7 +285,9 @@ fun SpisScreen() {
     val parser = remember { InventoryParser() }
     val voiceCommandParser = remember { VoiceCommandParser() }
     val commandRouter = remember { CommandRouter(voiceCommandParser = voiceCommandParser) }
+    val clipboardManager = LocalClipboardManager.current
     var pendingExportCsv by remember { mutableStateOf<String?>(null) }
+    var pendingExportDebug by remember { mutableStateOf<String?>(null) }
     var catalogMetadata by remember { mutableStateOf<CatalogMetadata?>(null) }
     var catalogError by remember { mutableStateOf<String?>(null) }
     var forceCodeModeNext by remember { mutableStateOf(false) }
@@ -335,6 +344,83 @@ fun SpisScreen() {
         } finally {
             pendingExportCsv = null
         }
+    }
+
+    val exportDebugLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri: Uri? ->
+        val debugPayload = pendingExportDebug
+        if (uri == null) {
+            pendingExportDebug = null
+            Toast.makeText(context, "Eksport anulowany.", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        if (debugPayload == null) {
+            Toast.makeText(context, "Brak danych do zapisu.", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        try {
+            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                OutputStreamWriter(outputStream, Charsets.UTF_8).use { writer ->
+                    writer.write(debugPayload)
+                }
+            }
+            Toast.makeText(context, "Zapisano plik: $uri", Toast.LENGTH_SHORT).show()
+        } catch (ex: Exception) {
+            Log.e(TAG, "Debug export failed", ex)
+            Toast.makeText(context, "Nie udało się zapisać debug.", Toast.LENGTH_SHORT).show()
+        } finally {
+            pendingExportDebug = null
+        }
+    }
+
+    fun buildDebugPayload(row: SpisRow, index: Int): String {
+        val voskRawText = row.voskRawText?.ifBlank { null }
+        val routerInput = (voskRawText ?: row.rawText).trim()
+        val split = splitByQuantityMarkerDebug(routerInput)
+        val partA = split?.partA ?: routerInput
+        val partB = split?.partB.orEmpty()
+        val codeMode =
+            debugCodeModeByRowId[row.id]
+                ?: row.parseDebug?.any { it.contains("code mode", ignoreCase = true) }
+                ?: forceCodeModeNext
+        val normalizedA = row.normalizedText ?: partA
+        val qtyUnit = "${row.quantity} ${row.unit?.label.orEmpty()}".trim()
+        return buildString {
+            append("Entry #")
+            append(index + 1)
+            append(" (id: ")
+            append(row.id)
+            append(")\n")
+            append("vosk_raw: ")
+            append(voskRawText ?: "-")
+            append("\n")
+            append("router_input: ")
+            append(routerInput)
+            append("\n")
+            append("partA: ")
+            append(partA)
+            append("\n")
+            append("partB: ")
+            append(partB)
+            append("\n")
+            append("codeMode: ")
+            append(if (codeMode) "ON" else "OFF")
+            append("\n")
+            append("normalizedA: ")
+            append(normalizedA)
+            append("\n")
+            append("qty/unit: ")
+            append(qtyUnit)
+        }
+    }
+
+    fun buildAllDebugPayload(): String {
+        val entries = rows.filter { it.type == RowType.ITEM }
+        if (entries.isEmpty()) return ""
+        return entries.mapIndexed { index, row ->
+            buildDebugPayload(row, index)
+        }.joinToString(separator = "\n---\n")
     }
 
     val importCatalogLauncher = rememberLauncherForActivityResult(
@@ -615,6 +701,54 @@ fun SpisScreen() {
                     Text("DEBUG ${if (debugOverlayEnabled) "ON" else "OFF"}")
                 }
             )
+        }
+
+        if (debugOverlayEnabled) {
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(onClick = {
+                    val payload = buildAllDebugPayload()
+                    if (payload.isBlank()) {
+                        Toast.makeText(context, "Brak debug do skopiowania.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        clipboardManager.setText(AnnotatedString(payload))
+                        Toast.makeText(context, "Skopiowano debug", Toast.LENGTH_SHORT).show()
+                    }
+                }) {
+                    Text("Kopiuj debug (wszystko)")
+                }
+
+                OutlinedButton(onClick = {
+                    val payload = buildAllDebugPayload()
+                    if (payload.isBlank()) {
+                        Toast.makeText(context, "Brak debug do udostępnienia.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, payload)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Udostępnij debug"))
+                    }
+                }) {
+                    Text("Udostępnij debug")
+                }
+
+                OutlinedButton(onClick = {
+                    val payload = buildAllDebugPayload()
+                    if (payload.isBlank()) {
+                        Toast.makeText(context, "Brak debug do eksportu.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        pendingExportDebug = payload
+                        exportDebugLauncher.launch(defaultDebugExportFileName())
+                    }
+                }) {
+                    Text("Eksportuj debug")
+                }
+            }
         }
 
         Spacer(Modifier.height(8.dp))
@@ -945,6 +1079,7 @@ fun SpisScreen() {
                                     debugCodeModeByRowId[row.id]
                                         ?: row.parseDebug?.any { it.contains("code mode", ignoreCase = true) }
                                         ?: forceCodeModeNext
+                                val rowIndex = rows.indexOfFirst { it.id == row.id }
                                 Spacer(Modifier.height(4.dp))
                                 Column(
                                     modifier = Modifier
@@ -952,6 +1087,28 @@ fun SpisScreen() {
                                         .background(Color(0xFFF5F5F5))
                                         .padding(8.dp)
                                 ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "DEBUG",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                        TextButton(
+                                            onClick = {
+                                                val index = if (rowIndex == -1) 0 else rowIndex
+                                                val payload = buildDebugPayload(row, index)
+                                                clipboardManager.setText(AnnotatedString(payload))
+                                                Toast.makeText(context, "Skopiowano debug", Toast.LENGTH_SHORT).show()
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                        ) {
+                                            Text("📋")
+                                        }
+                                    }
                                     val debugTextStyle = MaterialTheme.typography.labelSmall
                                     val debugValueStyle = MaterialTheme.typography.labelSmall.copy(
                                         fontFamily = FontFamily.Monospace
