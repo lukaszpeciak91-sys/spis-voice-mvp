@@ -386,6 +386,8 @@ fun SpisScreen() {
                 ?: forceCodeModeNext
         val normalizedA = row.normalizedText ?: partA
         val qtyUnit = "${row.quantity} ${row.unit?.label.orEmpty()}".trim()
+        val savedDisplay = "${row.rawText} | ${row.quantity} ${row.unit?.label}"
+        val savedQtyUnit = "${row.quantity} ${row.unit?.label.orEmpty()}".trim()
         return buildString {
             append("Entry #")
             append(index + 1)
@@ -412,6 +414,18 @@ fun SpisScreen() {
             append("\n")
             append("qty/unit: ")
             append(qtyUnit)
+            append("\n")
+            append("saved_display: ")
+            append(savedDisplay)
+            append("\n")
+            append("saved_rawText: ")
+            append(row.rawText)
+            append("\n")
+            append("saved_normalizedText: ")
+            append(row.normalizedText ?: "null")
+            append("\n")
+            append("saved_qty/unit: ")
+            append(savedQtyUnit)
         }
     }
 
