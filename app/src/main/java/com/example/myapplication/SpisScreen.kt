@@ -6,6 +6,8 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -286,6 +288,7 @@ fun SpisScreen() {
     val voiceCommandParser = remember { VoiceCommandParser() }
     val commandRouter = remember { CommandRouter(voiceCommandParser = voiceCommandParser) }
     val clipboardManager = LocalClipboardManager.current
+    val hapticFeedback = LocalHapticFeedback.current
     var pendingExportCsv by remember { mutableStateOf<String?>(null) }
     var pendingExportDebug by remember { mutableStateOf<String?>(null) }
     var catalogMetadata by remember { mutableStateOf<CatalogMetadata?>(null) }
@@ -644,6 +647,19 @@ fun SpisScreen() {
     LaunchedEffect(Unit) {
         VoskTranscriptionManager.transcriptionState.collect { state ->
             when (state) {
+                is TranscriptionState.Running -> {
+                    val index = rows.indexOfFirst { it.transcriptionJobId == state.jobId }
+                    if (index != -1) {
+                        val row = rows[index]
+                        val audioFile = File(state.audioPath)
+                        rows[index] = row.copy(
+                            rawText = "[AUDIO] ${audioFile.name} (⏳ transkrypcja…)",
+                            parseStatus = ParseStatus.WARNING,
+                            parseDebug = listOf("⏳ transkrypcja…")
+                        )
+                    }
+                }
+
                 is TranscriptionState.Success -> handleTranscriptionResult(
                     jobId = state.jobId,
                     audioPath = state.audioPath,
@@ -871,11 +887,25 @@ fun SpisScreen() {
                         is TranscriptionStartResult.Started -> {
                             val audioRow = SpisRow(
                                 type = RowType.ITEM,
-                                rawText = "[AUDIO] ${file.name} (transcribing...)",
+                                rawText = "[AUDIO] ${file.name} (⏳ transkrypcja…)",
                                 quantity = 1,
                                 unit = UnitType.SZT,
                                 parseStatus = ParseStatus.WARNING,
-                                parseDebug = listOf("Transcribing audio..."),
+                                parseDebug = listOf("⏳ transkrypcja…"),
+                                transcriptionJobId = startResult.jobId
+                            )
+                            rows.add(audioRow)
+                            markLastAdded(audioRow.id)
+                        }
+
+                        is TranscriptionStartResult.Buffered -> {
+                            val audioRow = SpisRow(
+                                type = RowType.ITEM,
+                                rawText = "[AUDIO] ${file.name} (⏱ oczekuje…)",
+                                quantity = 1,
+                                unit = UnitType.SZT,
+                                parseStatus = ParseStatus.WARNING,
+                                parseDebug = listOf("⏱ oczekuje…"),
                                 transcriptionJobId = startResult.jobId
                             )
                             rows.add(audioRow)
@@ -883,18 +913,9 @@ fun SpisScreen() {
                         }
 
                         is TranscriptionStartResult.Busy -> {
-                            val failureMessage = startResult.message
-                            val audioRow = SpisRow(
-                                type = RowType.ITEM,
-                                rawText = "[AUDIO] ${file.name} (${failureMessage})",
-                                quantity = 1,
-                                unit = UnitType.SZT,
-                                parseStatus = ParseStatus.FAIL,
-                                parseDebug = listOf(failureMessage)
-                            )
-                            rows.add(audioRow)
-                            markLastAdded(audioRow.id)
-                            Log.i(TAG, "Audio cleanup skipped (failure): ${file.name}")
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            Toast.makeText(context, startResult.message, Toast.LENGTH_SHORT).show()
+                            Log.i(TAG, "Audio cleanup skipped (busy): ${file.name}")
                         }
                     }
                 }
