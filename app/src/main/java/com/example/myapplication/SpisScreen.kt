@@ -311,6 +311,44 @@ fun SpisScreen() {
         highlightExpiresAt = System.currentTimeMillis() + 2500L
     }
 
+    fun enqueueRecordedAudio(file: File) {
+        when (val startResult = VoskTranscriptionManager.startTranscription(context, file)) {
+            is TranscriptionStartResult.Started -> {
+                val audioRow = SpisRow(
+                    type = RowType.ITEM,
+                    rawText = "[AUDIO] ${file.name} (⏳ transkrypcja…)",
+                    quantity = 1,
+                    unit = UnitType.SZT,
+                    parseStatus = ParseStatus.WARNING,
+                    parseDebug = listOf("⏳ transkrypcja…"),
+                    transcriptionJobId = startResult.jobId
+                )
+                rows.add(audioRow)
+                markLastAdded(audioRow.id)
+            }
+
+            is TranscriptionStartResult.Buffered -> {
+                val audioRow = SpisRow(
+                    type = RowType.ITEM,
+                    rawText = "[AUDIO] ${file.name} (⏱ oczekuje…)",
+                    quantity = 1,
+                    unit = UnitType.SZT,
+                    parseStatus = ParseStatus.WARNING,
+                    parseDebug = listOf("⏱ oczekuje…"),
+                    transcriptionJobId = startResult.jobId
+                )
+                rows.add(audioRow)
+                markLastAdded(audioRow.id)
+            }
+
+            is TranscriptionStartResult.Busy -> {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                Toast.makeText(context, startResult.message, Toast.LENGTH_SHORT).show()
+                Log.i(TAG, "Audio cleanup skipped (busy): ${file.name}")
+            }
+        }
+    }
+
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -883,41 +921,7 @@ fun SpisScreen() {
                 val file = recorder.stop()
                 isRecording = false
                 if (file != null) {
-                    when (val startResult = VoskTranscriptionManager.startTranscription(context, file)) {
-                        is TranscriptionStartResult.Started -> {
-                            val audioRow = SpisRow(
-                                type = RowType.ITEM,
-                                rawText = "[AUDIO] ${file.name} (⏳ transkrypcja…)",
-                                quantity = 1,
-                                unit = UnitType.SZT,
-                                parseStatus = ParseStatus.WARNING,
-                                parseDebug = listOf("⏳ transkrypcja…"),
-                                transcriptionJobId = startResult.jobId
-                            )
-                            rows.add(audioRow)
-                            markLastAdded(audioRow.id)
-                        }
-
-                        is TranscriptionStartResult.Buffered -> {
-                            val audioRow = SpisRow(
-                                type = RowType.ITEM,
-                                rawText = "[AUDIO] ${file.name} (⏱ oczekuje…)",
-                                quantity = 1,
-                                unit = UnitType.SZT,
-                                parseStatus = ParseStatus.WARNING,
-                                parseDebug = listOf("⏱ oczekuje…"),
-                                transcriptionJobId = startResult.jobId
-                            )
-                            rows.add(audioRow)
-                            markLastAdded(audioRow.id)
-                        }
-
-                        is TranscriptionStartResult.Busy -> {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                            Toast.makeText(context, startResult.message, Toast.LENGTH_SHORT).show()
-                            Log.i(TAG, "Audio cleanup skipped (busy): ${file.name}")
-                        }
-                    }
+                    enqueueRecordedAudio(file)
                 }
                 textFocusRequester.requestFocus()
             }
