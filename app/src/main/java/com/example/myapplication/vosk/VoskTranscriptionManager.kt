@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import java.io.File
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,33 +23,69 @@ sealed class TranscriptionState {
 
 sealed class TranscriptionStartResult {
     data class Started(val jobId: String) : TranscriptionStartResult()
+    data class Buffered(val jobId: String) : TranscriptionStartResult()
     data class Busy(val message: String) : TranscriptionStartResult()
 }
 
+
 object VoskTranscriptionManager {
     private const val TAG = "VoskTranscriptionMgr"
-    private const val ERROR_BUSY = "ERROR_BUSY"
+    private const val ERROR_BUFFER_FULL = "Jest już jedno nagranie w kolejce"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val state = MutableStateFlow<TranscriptionState>(TranscriptionState.Idle)
-    private val busy = AtomicBoolean(false)
+    private val lock = Any()
+    private var activeJob: PendingJob? = null
+    private var bufferedJob: PendingJob? = null
     private var transcriber: VoskTranscriber? = null
 
     val transcriptionState: StateFlow<TranscriptionState> = state.asStateFlow()
 
+    private data class PendingJob(
+        val jobId: String,
+        val audioFile: File
+    )
+
     fun startTranscription(context: Context, audioFile: File): TranscriptionStartResult {
-        if (!busy.compareAndSet(false, true)) {
-            Log.w(TAG, "BUSY: transcription already running")
-            if (audioFile.exists() && audioFile.delete()) {
-                Log.w(TAG, "BUSY -> deleted temp audio ${audioFile.absolutePath}")
-            } else {
-                Log.w(TAG, "BUSY -> failed to delete temp audio ${audioFile.absolutePath}")
+        val pendingJob = PendingJob(
+            jobId = UUID.randomUUID().toString(),
+            audioFile = audioFile
+        )
+        var shouldStartNow = false
+
+        val startResult = synchronized(lock) {
+            when {
+                activeJob == null -> {
+                    activeJob = pendingJob
+                    shouldStartNow = true
+                    TranscriptionStartResult.Started(pendingJob.jobId)
+                }
+
+                bufferedJob == null -> {
+                    bufferedJob = pendingJob
+                    TranscriptionStartResult.Buffered(pendingJob.jobId)
+                }
+
+                else -> {
+                    Log.w(TAG, "BUSY: buffer full")
+                    deleteAudioFile(audioFile)
+                    TranscriptionStartResult.Busy(ERROR_BUFFER_FULL)
+                }
             }
-            return TranscriptionStartResult.Busy(ERROR_BUSY)
         }
 
-        val jobId = UUID.randomUUID().toString()
+        if (shouldStartNow) {
+            launchTranscription(context, pendingJob)
+        }
+
+        return startResult
+    }
+
+    private fun launchTranscription(context: Context, pendingJob: PendingJob) {
+        val jobId = pendingJob.jobId
+        val audioFile = pendingJob.audioFile
         val audioPath = audioFile.absolutePath
+
         state.value = TranscriptionState.Running(jobId = jobId, audioPath = audioPath)
 
         scope.launch {
@@ -75,11 +110,44 @@ object VoskTranscriptionManager {
                 Log.w(TAG, "Transcription cancelled (lifecycle) jobId=$jobId")
                 state.value = TranscriptionState.Cancelled(jobId = jobId, audioPath = audioPath)
             } finally {
-                busy.set(false)
+                scheduleNext(context, completedJobId = jobId)
             }
         }
+    }
 
-        return TranscriptionStartResult.Started(jobId)
+    private fun scheduleNext(context: Context, completedJobId: String) {
+        val nextJob = synchronized(lock) {
+            if (activeJob?.jobId == completedJobId) {
+                activeJob = null
+            }
+
+            val promoted = if (activeJob == null) {
+                bufferedJob.also { bufferedJob = null }
+            } else {
+                null
+            }
+
+            if (promoted != null) {
+                activeJob = promoted
+            }
+
+            promoted
+        }
+
+        if (nextJob != null) {
+            launchTranscription(context, nextJob)
+        } else {
+            state.value = TranscriptionState.Idle
+        }
+    }
+
+
+    private fun deleteAudioFile(audioFile: File) {
+        if (audioFile.exists() && audioFile.delete()) {
+            Log.w(TAG, "BUSY -> deleted temp audio ${audioFile.absolutePath}")
+        } else {
+            Log.w(TAG, "BUSY -> failed to delete temp audio ${audioFile.absolutePath}")
+        }
     }
 
     private fun getTranscriber(context: Context): VoskTranscriber {
