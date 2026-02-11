@@ -1281,19 +1281,22 @@ fun SpisScreen() {
                                 markLastAdded(audioRow.id)
                             }
 
-                            is TranscriptionStartResult.Busy -> {
-                                val failureMessage = startResult.message
+                            is TranscriptionStartResult.Buffered -> {
                                 val audioRow = SpisRow(
                                     type = RowType.ITEM,
-                                    rawText = "[AUDIO] ${file.name} (${failureMessage})",
+                                    rawText = "[AUDIO] ${file.name} (⏱ oczekuje…)",
                                     quantity = 1,
                                     unit = UnitType.SZT,
-                                    parseStatus = ParseStatus.FAIL,
-                                    parseDebug = listOf(failureMessage)
+                                    parseStatus = ParseStatus.WARNING,
+                                    parseDebug = listOf("⏱ oczekuje…"),
+                                    transcriptionJobId = startResult.jobId
                                 )
                                 rows.add(audioRow)
                                 markLastAdded(audioRow.id)
-                                Log.i(TAG, "Audio cleanup skipped (failure): ${file.name}")
+                            }
+
+                            is TranscriptionStartResult.Busy -> {
+                                Toast.makeText(context, startResult.message, Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
