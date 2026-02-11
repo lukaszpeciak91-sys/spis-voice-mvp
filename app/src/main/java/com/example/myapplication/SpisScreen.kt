@@ -22,15 +22,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.runtime.snapshotFlow
 import com.example.myapplication.parsing.CommandRouter
 import com.example.myapplication.parsing.InventoryParser
@@ -232,6 +235,18 @@ private fun applyParsing(
 
 private data class DebugQuantitySplit(val partA: String, val partB: String)
 
+private enum class InputMode {
+    VOICE,
+    MANUAL
+}
+
+private data class UiSnapshot(
+    val rows: List<SpisRow>,
+    val inputText: String,
+    val quantity: String,
+    val unit: UnitType
+)
+
 private fun normalizePolishToken(token: String): String {
     return token.lowercase()
         .replace('ą', 'a')
@@ -270,6 +285,8 @@ fun SpisScreen() {
     var expanded by remember { mutableStateOf(false) }
 
     val rows = remember { mutableStateListOf<SpisRow>() }
+    val undoStack = remember { mutableStateListOf<UiSnapshot>() }
+    val redoStack = remember { mutableStateListOf<UiSnapshot>() }
     var editingId by remember { mutableStateOf<String?>(null) }
     var parseDialogRow by remember { mutableStateOf<SpisRow?>(null) }
     var showCsvDialog by remember { mutableStateOf(false) }
@@ -298,10 +315,45 @@ fun SpisScreen() {
     val debugCodeModeByRowId = remember { mutableStateMapOf<String, Boolean>() }
 
     var isRecording by remember { mutableStateOf(false) }
+    var inputMode by remember { mutableStateOf(InputMode.VOICE) }
+    var requestedInputMode by remember { mutableStateOf(InputMode.VOICE) }
     var lastAudioPath by remember { mutableStateOf<String?>(null) }
     var lastAddedId by remember { mutableStateOf<String?>(null) }
     var highlightExpiresAt by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val imeBottomInset = WindowInsets.ime.getBottom(density)
+    val isImeVisible = imeBottomInset > 0
+    val showManualPanel = inputMode == InputMode.MANUAL && isImeVisible
+    val listBottomPadding = if (showManualPanel) 180.dp + with(density) { imeBottomInset.toDp() } else 140.dp
+
+    fun snapshotState() = UiSnapshot(
+        rows = rows.map { it.copy() },
+        inputText = inputText,
+        quantity = quantity,
+        unit = unit
+    )
+
+    fun restoreSnapshot(snapshot: UiSnapshot) {
+        rows.clear()
+        rows.addAll(snapshot.rows)
+        inputText = snapshot.inputText
+        quantity = snapshot.quantity
+        unit = snapshot.unit
+    }
+
+    fun pushUndoSnapshot() {
+        undoStack.add(snapshotState())
+        if (undoStack.size > 50) {
+            undoStack.removeFirst()
+        }
+        redoStack.clear()
+    }
+
+    LaunchedEffect(requestedInputMode) {
+        delay(120)
+        inputMode = requestedInputMode
+    }
 
     fun markLastAdded(rowId: String) {
         if (lastAddedId == rowId) {
@@ -730,242 +782,55 @@ fun SpisScreen() {
             .padding(16.dp)
     ) {
 
-        OutlinedTextField(
-            value = inputText,
-            onValueChange = { inputText = it },
-            label = { Text("Kod / EAN / nazwa") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(textFocusRequester)
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        val toggleChipColors = FilterChipDefaults.filterChipColors(
-            containerColor = Color(0xFFFFCDD2),
-            labelColor = contentColorFor(Color(0xFFFFCDD2)),
-            selectedContainerColor = Color(0xFFC8E6C9),
-            selectedLabelColor = contentColorFor(Color(0xFFC8E6C9))
-        )
-
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            FilterChip(
-                selected = forceCodeModeNext,
-                onClick = { forceCodeModeNext = !forceCodeModeNext },
-                colors = toggleChipColors,
-                label = {
-                    Text("TRYB KODU ${if (forceCodeModeNext) "ON" else "OFF"}")
-                }
-            )
-
             FilterChip(
                 selected = debugOverlayEnabled,
                 onClick = { debugOverlayEnabled = !debugOverlayEnabled },
-                colors = toggleChipColors,
-                label = {
-                    Text("DEBUG ${if (debugOverlayEnabled) "ON" else "OFF"}")
-                }
+                label = { Text("DEBUG ${if (debugOverlayEnabled) "ON" else "OFF"}") }
             )
-        }
-
-        if (debugOverlayEnabled) {
-            Spacer(Modifier.height(8.dp))
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(onClick = {
-                    val payload = buildAllDebugPayload()
-                    if (payload.isBlank()) {
-                        Toast.makeText(context, "Brak debug do skopiowania.", Toast.LENGTH_SHORT).show()
-                    } else {
-                        clipboardManager.setText(AnnotatedString(payload))
-                        Toast.makeText(context, "Skopiowano debug", Toast.LENGTH_SHORT).show()
-                    }
-                }) {
-                    Text("Kopiuj debug (wszystko)")
-                }
-
-                OutlinedButton(onClick = {
-                    val payload = buildAllDebugPayload()
-                    if (payload.isBlank()) {
-                        Toast.makeText(context, "Brak debug do udostępnienia.", Toast.LENGTH_SHORT).show()
-                    } else {
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, payload)
-                        }
-                        context.startActivity(Intent.createChooser(intent, "Udostępnij debug"))
-                    }
-                }) {
-                    Text("Udostępnij debug")
-                }
-
-                OutlinedButton(onClick = {
-                    val payload = buildAllDebugPayload()
-                    if (payload.isBlank()) {
-                        Toast.makeText(context, "Brak debug do eksportu.", Toast.LENGTH_SHORT).show()
-                    } else {
-                        pendingExportDebug = payload
-                        exportDebugLauncher.launch(defaultDebugExportFileName())
-                    }
-                }) {
-                    Text("Eksportuj debug")
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = quantity,
-                onValueChange = { quantity = it },
-                label = { Text("Ilość") },
-                modifier = Modifier.width(100.dp)
-            )
-
-            Spacer(Modifier.width(8.dp))
-
-            Box {
-                Button(onClick = { expanded = true }) {
-                    Text(unit.label)
-                }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    UnitType.values().forEach {
-                        DropdownMenuItem(
-                            text = { Text(it.label) },
-                            onClick = {
-                                unit = it
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        Row {
-            Button(onClick = {
-                val quantityValue = quantity.toIntOrNull() ?: 1
-                val allowPrefillQuantity = quantity.trim() == "1"
-                val allowPrefillUnit = unit == UnitType.SZT
-                val newRow = applyParsing(
-                    parser = parser,
-                    row = SpisRow(type = RowType.ITEM),
-                    rawText = inputText,
-                    quantity = quantityValue,
-                    unit = unit,
-                    allowPrefillQuantity = allowPrefillQuantity,
-                    allowPrefillUnit = allowPrefillUnit
-                )
-                rows.add(newRow)
-                debugCodeModeByRowId[newRow.id] = false
-                markLastAdded(newRow.id)
-                inputText = ""
-                quantity = "1"
-                textFocusRequester.requestFocus()
-            }) {
-                Text("Dodaj ITEM")
-            }
-
-            Spacer(Modifier.width(8.dp))
-
-            OutlinedButton(onClick = {
-                markerText = ""
-                showMarkerDialog = true
-                editingId = null
-                editingMarkerId = null
-            }) {
-                Text("Dodaj MARKER")
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(onClick = {
-                val dir = context.externalCacheDir ?: context.cacheDir
-                dir.listFiles()?.forEach { it.delete() }
-            }) {
-                Text("Wyczyść audio cache")
-            }
-
-            OutlinedButton(onClick = {
-                showClearDialog = true
-            }) {
-                Text("Wyczyść spis")
-            }
 
             OutlinedButton(onClick = { showCsvDialog = true }) {
                 Text("CSV")
             }
-        }
 
-        Spacer(Modifier.height(8.dp))
-
-        Button(onClick = {
-            if (!isRecording) {
-                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            } else {
-                val file = recorder.stop()
-                isRecording = false
-                if (file != null) {
-                    enqueueRecordedAudio(file)
+            Box {
+                var overflowExpanded by remember { mutableStateOf(false) }
+                OutlinedButton(onClick = { overflowExpanded = true }) {
+                    Text("Więcej")
                 }
-                textFocusRequester.requestFocus()
-            }
-        }) {
-            Text(if (!isRecording) "🎙️ Nagraj" else "⏹ Stop")
-        }
-
-        Spacer(Modifier.height(6.dp))
-
-        Text(
-            text = "Powiedz: '[nazwa] ilość 5 szt' lub 'Dodaj marker regał A'.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            if (isRecording) {
-                Surface(
-                    color = Color(0xFFFFCDD2),
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        text = "Nagrywanie…",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFB71C1C),
-                        fontWeight = FontWeight.SemiBold
+                DropdownMenu(expanded = overflowExpanded, onDismissRequest = { overflowExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Wyczyść audio cache") },
+                        onClick = {
+                            val dir = context.externalCacheDir ?: context.cacheDir
+                            dir.listFiles()?.forEach { it.delete() }
+                            overflowExpanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Wyczyść spis") },
+                        onClick = {
+                            showClearDialog = true
+                            overflowExpanded = false
+                        }
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
         LazyColumn(
             state = listState,
-            modifier = Modifier.imePadding()
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .imePadding(),
+            contentPadding = PaddingValues(bottom = listBottomPadding)
         ) {
             items(rows, key = { it.id }) { row ->
                 val isHighlighted = row.id == lastAddedId
@@ -1210,7 +1075,277 @@ fun SpisScreen() {
                 }
             }
         }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                if (undoStack.isNotEmpty()) {
+                    val previous = undoStack.removeLast()
+                    redoStack.add(snapshotState())
+                    restoreSnapshot(previous)
+                }
+            }, enabled = undoStack.isNotEmpty()) { Text("Undo") }
+            OutlinedButton(onClick = {
+                if (redoStack.isNotEmpty()) {
+                    val next = redoStack.removeLast()
+                    undoStack.add(snapshotState())
+                    restoreSnapshot(next)
+                }
+            }, enabled = redoStack.isNotEmpty()) { Text("Redo") }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = inputText,
+            onValueChange = { inputText = it },
+            label = { Text("Kod / EAN / nazwa (${if (inputMode == InputMode.MANUAL) "Manual" else "Voice"})") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(textFocusRequester)
+                .onFocusChanged { focusState ->
+                    requestedInputMode = if (focusState.isFocused) InputMode.MANUAL else InputMode.VOICE
+                }
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        val toggleChipColors = FilterChipDefaults.filterChipColors(
+            containerColor = Color(0xFFFFCDD2),
+            labelColor = contentColorFor(Color(0xFFFFCDD2)),
+            selectedContainerColor = Color(0xFFC8E6C9),
+            selectedLabelColor = contentColorFor(Color(0xFFC8E6C9))
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = forceCodeModeNext,
+                onClick = { forceCodeModeNext = !forceCodeModeNext },
+                colors = toggleChipColors,
+                label = {
+                    Text("TRYB KODU ${if (forceCodeModeNext) "ON" else "OFF"}")
+                }
+            )
+        }
+
+        if (debugOverlayEnabled) {
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(onClick = {
+                    val payload = buildAllDebugPayload()
+                    if (payload.isBlank()) {
+                        Toast.makeText(context, "Brak debug do skopiowania.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        clipboardManager.setText(AnnotatedString(payload))
+                        Toast.makeText(context, "Skopiowano debug", Toast.LENGTH_SHORT).show()
+                    }
+                }) {
+                    Text("Kopiuj debug (wszystko)")
+                }
+
+                OutlinedButton(onClick = {
+                    val payload = buildAllDebugPayload()
+                    if (payload.isBlank()) {
+                        Toast.makeText(context, "Brak debug do udostępnienia.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, payload)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Udostępnij debug"))
+                    }
+                }) {
+                    Text("Udostępnij debug")
+                }
+
+                OutlinedButton(onClick = {
+                    val payload = buildAllDebugPayload()
+                    if (payload.isBlank()) {
+                        Toast.makeText(context, "Brak debug do eksportu.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        pendingExportDebug = payload
+                        exportDebugLauncher.launch(defaultDebugExportFileName())
+                    }
+                }) {
+                    Text("Eksportuj debug")
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        if (showManualPanel) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = quantity,
+                        onValueChange = { quantity = it },
+                        label = { Text("Ilość") },
+                        modifier = Modifier.width(100.dp)
+                    )
+
+                    Spacer(Modifier.width(8.dp))
+
+                    Box {
+                        Button(onClick = { expanded = true }) {
+                            Text(unit.label)
+                        }
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            UnitType.values().forEach {
+                                DropdownMenuItem(
+                                    text = { Text(it.label) },
+                                    onClick = {
+                                        unit = it
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Row {
+                    Button(onClick = {
+                        pushUndoSnapshot()
+                        val quantityValue = quantity.toIntOrNull() ?: 1
+                        val allowPrefillQuantity = quantity.trim() == "1"
+                        val allowPrefillUnit = unit == UnitType.SZT
+                        val newRow = applyParsing(
+                            parser = parser,
+                            row = SpisRow(type = RowType.ITEM),
+                            rawText = inputText,
+                            quantity = quantityValue,
+                            unit = unit,
+                            allowPrefillQuantity = allowPrefillQuantity,
+                            allowPrefillUnit = allowPrefillUnit
+                        )
+                        rows.add(newRow)
+                        debugCodeModeByRowId[newRow.id] = false
+                        markLastAdded(newRow.id)
+                        inputText = ""
+                        quantity = "1"
+                        textFocusRequester.requestFocus()
+                    }) {
+                        Text("Add Item")
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    OutlinedButton(onClick = {
+                        pushUndoSnapshot()
+                        markerText = ""
+                        showMarkerDialog = true
+                        editingId = null
+                        editingMarkerId = null
+                    }) {
+                        Text("Add Marker")
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        if (!showManualPanel) {
+            Button(onClick = {
+                if (!isRecording) {
+                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                } else {
+                    val file = recorder.stop()
+                    isRecording = false
+                    if (file != null) {
+                        when (val startResult = VoskTranscriptionManager.startTranscription(context, file)) {
+                            is TranscriptionStartResult.Started -> {
+                                val audioRow = SpisRow(
+                                    type = RowType.ITEM,
+                                    rawText = "[AUDIO] ${file.name} (transcribing...)",
+                                    quantity = 1,
+                                    unit = UnitType.SZT,
+                                    parseStatus = ParseStatus.WARNING,
+                                    parseDebug = listOf("Transcribing audio..."),
+                                    transcriptionJobId = startResult.jobId
+                                )
+                                rows.add(audioRow)
+                                markLastAdded(audioRow.id)
+                            }
+
+                            is TranscriptionStartResult.Busy -> {
+                                val failureMessage = startResult.message
+                                val audioRow = SpisRow(
+                                    type = RowType.ITEM,
+                                    rawText = "[AUDIO] ${file.name} (${failureMessage})",
+                                    quantity = 1,
+                                    unit = UnitType.SZT,
+                                    parseStatus = ParseStatus.FAIL,
+                                    parseDebug = listOf(failureMessage)
+                                )
+                                rows.add(audioRow)
+                                markLastAdded(audioRow.id)
+                                Log.i(TAG, "Audio cleanup skipped (failure): ${file.name}")
+                            }
+                        }
+                    }
+                    textFocusRequester.requestFocus()
+                }
+            }) {
+                Text(if (!isRecording) "🎙️ Nagraj" else "⏹ Stop")
+            }
+        } else {
+            Spacer(
+                modifier = Modifier
+                    .height(0.dp)
+                    .clearAndSetSemantics { }
+            )
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = "Powiedz: '[nazwa] ilość 5 szt' lub 'Dodaj marker regał A'.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            if (isRecording) {
+                Surface(
+                    color = Color(0xFFFFCDD2),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = "Nagrywanie…",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFB71C1C),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
     }
+
 
     if (showMarkerDialog) {
         AlertDialog(
