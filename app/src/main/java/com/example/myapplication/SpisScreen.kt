@@ -32,7 +32,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.runtime.snapshotFlow
 import com.example.myapplication.parsing.CommandRouter
 import com.example.myapplication.parsing.InventoryParser
@@ -321,7 +320,7 @@ fun SpisScreen() {
     var highlightExpiresAt by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
     val showManualPanel = inputMode == InputMode.MANUAL
-    val listBottomPadding = if (showManualPanel) 180.dp else 140.dp
+    val listBottomPadding = if (showManualPanel) 260.dp else 180.dp
 
     fun snapshotState() = UiSnapshot(
         rows = rows.map { it.copy() },
@@ -777,7 +776,6 @@ fun SpisScreen() {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
-            .imePadding()
     ) {
 
         Row(
@@ -826,8 +824,7 @@ fun SpisScreen() {
             state = listState,
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .imePadding(),
+                .fillMaxWidth(),
             contentPadding = PaddingValues(bottom = listBottomPadding)
         ) {
             items(rows, key = { it.id }) { row ->
@@ -1178,146 +1175,145 @@ fun SpisScreen() {
 
         Spacer(Modifier.height(8.dp))
 
-        if (showManualPanel) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .imePadding(),
+            tonalElevation = 2.dp,
+            shadowElevation = 2.dp
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .imePadding()
+                    .padding(12.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = quantity,
-                        onValueChange = { quantity = it },
-                        label = { Text("Ilość") },
-                        modifier = Modifier.width(100.dp)
-                    )
-
-                    Spacer(Modifier.width(8.dp))
-
-                    Box {
-                        Button(onClick = { expanded = true }) {
-                            Text(unit.label)
-                        }
-                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            UnitType.values().forEach {
-                                DropdownMenuItem(
-                                    text = { Text(it.label) },
-                                    onClick = {
-                                        unit = it
-                                        expanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                Row {
-                    Button(onClick = {
-                        pushUndoSnapshot()
-                        val quantityValue = quantity.toIntOrNull() ?: 1
-                        val allowPrefillQuantity = quantity.trim() == "1"
-                        val allowPrefillUnit = unit == UnitType.SZT
-                        val newRow = applyParsing(
-                            parser = parser,
-                            row = SpisRow(type = RowType.ITEM),
-                            rawText = inputText,
-                            quantity = quantityValue,
-                            unit = unit,
-                            allowPrefillQuantity = allowPrefillQuantity,
-                            allowPrefillUnit = allowPrefillUnit
+                if (showManualPanel) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = quantity,
+                            onValueChange = { quantity = it },
+                            label = { Text("Ilość") },
+                            modifier = Modifier.width(100.dp)
                         )
-                        rows.add(newRow)
-                        debugCodeModeByRowId[newRow.id] = false
-                        markLastAdded(newRow.id)
-                        inputText = ""
-                        quantity = "1"
-                        textFocusRequester.requestFocus()
-                    }) {
-                        Text("Add Item")
-                    }
 
-                    Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(8.dp))
 
-                    OutlinedButton(onClick = {
-                        pushUndoSnapshot()
-                        markerText = ""
-                        showMarkerDialog = true
-                        editingId = null
-                        editingMarkerId = null
-                    }) {
-                        Text("Add Marker")
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        if (!showManualPanel) {
-            Button(onClick = {
-                if (!isRecording) {
-                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                } else {
-                    val file = recorder.stop()
-                    isRecording = false
-                    if (file != null) {
-                        when (val startResult = VoskTranscriptionManager.startTranscription(context, file)) {
-                            is TranscriptionStartResult.Started -> {
-                                val audioRow = SpisRow(
-                                    type = RowType.ITEM,
-                                    rawText = "[AUDIO] ${file.name} (transcribing...)",
-                                    quantity = 1,
-                                    unit = UnitType.SZT,
-                                    parseStatus = ParseStatus.WARNING,
-                                    parseDebug = listOf("Transcribing audio..."),
-                                    transcriptionJobId = startResult.jobId
-                                )
-                                rows.add(audioRow)
-                                markLastAdded(audioRow.id)
+                        Box {
+                            Button(onClick = { expanded = true }) {
+                                Text(unit.label)
                             }
-
-                            is TranscriptionStartResult.Buffered -> {
-                                val audioRow = SpisRow(
-                                    type = RowType.ITEM,
-                                    rawText = "[AUDIO] ${file.name} (⏱ oczekuje…)",
-                                    quantity = 1,
-                                    unit = UnitType.SZT,
-                                    parseStatus = ParseStatus.WARNING,
-                                    parseDebug = listOf("⏱ oczekuje…"),
-                                    transcriptionJobId = startResult.jobId
-                                )
-                                rows.add(audioRow)
-                                markLastAdded(audioRow.id)
-                            }
-
-                            is TranscriptionStartResult.Busy -> {
-                                Toast.makeText(context, startResult.message, Toast.LENGTH_SHORT).show()
+                            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                UnitType.values().forEach {
+                                    DropdownMenuItem(
+                                        text = { Text(it.label) },
+                                        onClick = {
+                                            unit = it
+                                            expanded = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
-                    textFocusRequester.requestFocus()
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Row {
+                        Button(onClick = {
+                            pushUndoSnapshot()
+                            val quantityValue = quantity.toIntOrNull() ?: 1
+                            val allowPrefillQuantity = quantity.trim() == "1"
+                            val allowPrefillUnit = unit == UnitType.SZT
+                            val newRow = applyParsing(
+                                parser = parser,
+                                row = SpisRow(type = RowType.ITEM),
+                                rawText = inputText,
+                                quantity = quantityValue,
+                                unit = unit,
+                                allowPrefillQuantity = allowPrefillQuantity,
+                                allowPrefillUnit = allowPrefillUnit
+                            )
+                            rows.add(newRow)
+                            debugCodeModeByRowId[newRow.id] = false
+                            markLastAdded(newRow.id)
+                            inputText = ""
+                            quantity = "1"
+                            textFocusRequester.requestFocus()
+                        }) {
+                            Text("Add Item")
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        OutlinedButton(onClick = {
+                            pushUndoSnapshot()
+                            markerText = ""
+                            showMarkerDialog = true
+                            editingId = null
+                            editingMarkerId = null
+                        }) {
+                            Text("Add Marker")
+                        }
+                    }
+                } else {
+                    Button(onClick = {
+                        if (!isRecording) {
+                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        } else {
+                            val file = recorder.stop()
+                            isRecording = false
+                            if (file != null) {
+                                when (val startResult = VoskTranscriptionManager.startTranscription(context, file)) {
+                                    is TranscriptionStartResult.Started -> {
+                                        val audioRow = SpisRow(
+                                            type = RowType.ITEM,
+                                            rawText = "[AUDIO] ${file.name} (transcribing...)",
+                                            quantity = 1,
+                                            unit = UnitType.SZT,
+                                            parseStatus = ParseStatus.WARNING,
+                                            parseDebug = listOf("Transcribing audio..."),
+                                            transcriptionJobId = startResult.jobId
+                                        )
+                                        rows.add(audioRow)
+                                        markLastAdded(audioRow.id)
+                                    }
+
+                                    is TranscriptionStartResult.Buffered -> {
+                                        val audioRow = SpisRow(
+                                            type = RowType.ITEM,
+                                            rawText = "[AUDIO] ${file.name} (⏱ oczekuje…)",
+                                            quantity = 1,
+                                            unit = UnitType.SZT,
+                                            parseStatus = ParseStatus.WARNING,
+                                            parseDebug = listOf("⏱ oczekuje…"),
+                                            transcriptionJobId = startResult.jobId
+                                        )
+                                        rows.add(audioRow)
+                                        markLastAdded(audioRow.id)
+                                    }
+
+                                    is TranscriptionStartResult.Busy -> {
+                                        Toast.makeText(context, startResult.message, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                            textFocusRequester.requestFocus()
+                        }
+                    }) {
+                        Text(if (!isRecording) "🎙️ Nagraj" else "⏹ Stop")
+                    }
                 }
-            }) {
-                Text(if (!isRecording) "🎙️ Nagraj" else "⏹ Stop")
+
+                Spacer(Modifier.height(6.dp))
+
+                Text(
+                    text = "Powiedz: '[nazwa] ilość 5 szt' lub 'Dodaj marker regał A'.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
             }
-        } else {
-            Spacer(
-                modifier = Modifier
-                    .height(0.dp)
-                    .clearAndSetSemantics { }
-            )
         }
-
-        Spacer(Modifier.height(6.dp))
-
-        Text(
-            text = "Powiedz: '[nazwa] ilość 5 szt' lub 'Dodaj marker regał A'.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-        )
 
         Spacer(Modifier.height(8.dp))
 
