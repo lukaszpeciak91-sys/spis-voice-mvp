@@ -9,8 +9,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
 sealed class TranscriptionState {
@@ -34,12 +37,14 @@ object VoskTranscriptionManager {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val state = MutableStateFlow<TranscriptionState>(TranscriptionState.Idle)
+    private val updates = MutableSharedFlow<TranscriptionState>(extraBufferCapacity = 16)
     private val lock = Any()
     private var activeJob: PendingJob? = null
     private var bufferedJob: PendingJob? = null
     private var transcriber: VoskTranscriber? = null
 
     val transcriptionState: StateFlow<TranscriptionState> = state.asStateFlow()
+    val transcriptionUpdates: SharedFlow<TranscriptionState> = updates.asSharedFlow()
 
     private data class PendingJob(
         val jobId: String,
@@ -86,29 +91,33 @@ object VoskTranscriptionManager {
         val audioFile = pendingJob.audioFile
         val audioPath = audioFile.absolutePath
 
-        state.value = TranscriptionState.Running(jobId = jobId, audioPath = audioPath)
+        emitTranscriptionUpdate(TranscriptionState.Running(jobId = jobId, audioPath = audioPath))
 
         scope.launch {
             try {
                 val result = getTranscriber(context).transcribe(audioFile)
                 val trimmed = result.getOrNull()?.trim().orEmpty()
                 if (result.isSuccess && trimmed.isNotEmpty()) {
-                    state.value = TranscriptionState.Success(
+                    Log.i(
+                        TAG,
+                        "APP: transcription result emitted jobId=$jobId filename=${audioFile.name} textLength=${trimmed.length}"
+                    )
+                    emitTranscriptionUpdate(TranscriptionState.Success(
                         jobId = jobId,
                         audioPath = audioPath,
                         text = trimmed
-                    )
+                    ))
                 } else {
                     val message = result.exceptionOrNull()?.message ?: "Transcription failed."
-                    state.value = TranscriptionState.Error(
+                    emitTranscriptionUpdate(TranscriptionState.Error(
                         jobId = jobId,
                         audioPath = audioPath,
                         message = message
-                    )
+                    ))
                 }
             } catch (e: CancellationException) {
                 Log.w(TAG, "Transcription cancelled (lifecycle) jobId=$jobId")
-                state.value = TranscriptionState.Cancelled(jobId = jobId, audioPath = audioPath)
+                emitTranscriptionUpdate(TranscriptionState.Cancelled(jobId = jobId, audioPath = audioPath))
             } finally {
                 scheduleNext(context, completedJobId = jobId)
             }
@@ -137,8 +146,13 @@ object VoskTranscriptionManager {
         if (nextJob != null) {
             launchTranscription(context, nextJob)
         } else {
-            state.value = TranscriptionState.Idle
+            emitTranscriptionUpdate(TranscriptionState.Idle)
         }
+    }
+
+    private fun emitTranscriptionUpdate(nextState: TranscriptionState) {
+        state.value = nextState
+        updates.tryEmit(nextState)
     }
 
 
