@@ -643,6 +643,7 @@ fun SpisScreen() {
         errorMessage: String?
     ) {
         val index = rows.indexOfFirst { it.transcriptionJobId == jobId }
+        Log.i(TAG, "UI: received transcription update jobId=$jobId matchedRow=${index != -1}")
         if (index == -1) return
         val audioFile = File(audioPath)
         val currentRow = rows[index]
@@ -735,7 +736,7 @@ fun SpisScreen() {
     }
 
     LaunchedEffect(Unit) {
-        VoskTranscriptionManager.transcriptionState.collect { state ->
+        VoskTranscriptionManager.transcriptionUpdates.collect { state ->
             when (state) {
                 is TranscriptionState.Running -> {
                     val index = rows.indexOfFirst { it.transcriptionJobId == state.jobId }
