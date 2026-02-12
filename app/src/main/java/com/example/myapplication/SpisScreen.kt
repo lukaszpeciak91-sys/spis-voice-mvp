@@ -27,7 +27,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -321,11 +320,8 @@ fun SpisScreen() {
     var lastAddedId by remember { mutableStateOf<String?>(null) }
     var highlightExpiresAt by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
-    val density = LocalDensity.current
-    val imeBottomInset = WindowInsets.ime.getBottom(density)
-    val isImeVisible = imeBottomInset > 0
-    val showManualPanel = inputMode == InputMode.MANUAL && isImeVisible
-    val listBottomPadding = if (showManualPanel) 180.dp + with(density) { imeBottomInset.toDp() } else 140.dp
+    val showManualPanel = inputMode == InputMode.MANUAL
+    val listBottomPadding = if (showManualPanel) 180.dp else 140.dp
 
     fun snapshotState() = UiSnapshot(
         rows = rows.map { it.copy() },
@@ -781,6 +777,7 @@ fun SpisScreen() {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
+            .imePadding()
     ) {
 
         Row(
