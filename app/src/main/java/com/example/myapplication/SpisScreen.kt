@@ -1163,7 +1163,6 @@ fun SpisScreen() {
                     }
                 }
             }
-        }
 
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
