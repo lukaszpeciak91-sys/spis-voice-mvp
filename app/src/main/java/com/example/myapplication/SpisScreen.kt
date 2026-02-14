@@ -25,14 +25,19 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import com.example.myapplication.parsing.CommandRouter
 import com.example.myapplication.parsing.InventoryParser
 import com.example.myapplication.parsing.VoiceCommandParser
@@ -50,6 +55,7 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 
@@ -296,6 +302,7 @@ fun SpisScreen() {
 
     var editingMarkerId by remember { mutableStateOf<String?>(null) }
     val textFocusRequester = remember { FocusRequester() }
+    val quantityFocusRequester = remember { FocusRequester() }
 
     val context = LocalContext.current
     val recorder = remember { AudioRecorder(context) }
@@ -319,6 +326,23 @@ fun SpisScreen() {
     var lastAddedId by remember { mutableStateOf<String?>(null) }
     var highlightExpiresAt by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    val workAreaIndex by remember(rows.size) { mutableIntStateOf(rows.size) }
+    var initialWorkAreaScrollDone by remember { mutableStateOf(false) }
+    val isAtBottom by remember {
+        derivedStateOf {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            if (totalItems == 0) {
+                true
+            } else {
+                val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                lastVisible >= totalItems - 1
+            }
+        }
+    }
 
     fun snapshotState() = UiSnapshot(
         rows = rows.map { it.copy() },
@@ -343,9 +367,40 @@ fun SpisScreen() {
         redoStack.clear()
     }
 
+    fun addItemFromManualInput() {
+        pushUndoSnapshot()
+        val quantityValue = quantity.toIntOrNull() ?: 1
+        val allowPrefillQuantity = quantity.trim() == "1"
+        val allowPrefillUnit = unit == UnitType.SZT
+        val newRow = applyParsing(
+            parser = parser,
+            row = SpisRow(type = RowType.ITEM),
+            rawText = inputText,
+            quantity = quantityValue,
+            unit = unit,
+            allowPrefillQuantity = allowPrefillQuantity,
+            allowPrefillUnit = allowPrefillUnit
+        )
+        rows.add(newRow)
+        debugCodeModeByRowId[newRow.id] = false
+        markLastAdded(newRow.id)
+        inputText = ""
+        quantity = "1"
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        textFocusRequester.requestFocus()
+    }
+
     LaunchedEffect(requestedInputMode) {
         delay(120)
         inputMode = requestedInputMode
+    }
+
+    LaunchedEffect(workAreaIndex, initialWorkAreaScrollDone) {
+        if (!initialWorkAreaScrollDone) {
+            listState.scrollToItem(workAreaIndex)
+            initialWorkAreaScrollDone = true
+        }
     }
 
     fun markLastAdded(rowId: String) {
@@ -853,7 +908,8 @@ fun SpisScreen() {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(top = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Button(
@@ -903,7 +959,7 @@ fun SpisScreen() {
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(64.dp)
+                            .height(72.dp)
                     ) {
                         Text(if (!isRecording) "🎙️ Nagraj" else "⏹ Stop")
                     }
@@ -911,17 +967,21 @@ fun SpisScreen() {
             }
         }
     ) { paddingValues ->
-        LazyColumn(
-            state = listState,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .consumeWindowInsets(paddingValues)
-                .padding(horizontal = 16.dp)
-                .imePadding(),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
+                .imePadding()
         ) {
-            items(rows, key = { it.id }) { row ->
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp)
+            ) {
+                items(rows, key = { it.id }) { row ->
                 val isHighlighted = row.id == lastAddedId
                 val baseBackground = if (row.type == RowType.MARKER) Color.LightGray else Color.Transparent
                 val highlightColor = Color(0xFFFFF3CD)
@@ -1164,8 +1224,8 @@ fun SpisScreen() {
                 }
             }
 
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = {
                         if (undoStack.isNotEmpty()) {
                             val previous = undoStack.removeLast()
@@ -1193,7 +1253,11 @@ fun SpisScreen() {
                         .focusRequester(textFocusRequester)
                         .onFocusChanged { focusState ->
                             requestedInputMode = if (focusState.isFocused) InputMode.MANUAL else InputMode.VOICE
-                        }
+                        },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { quantityFocusRequester.requestFocus() }
+                    )
                 )
 
                 Spacer(Modifier.height(8.dp))
@@ -1203,7 +1267,19 @@ fun SpisScreen() {
                         value = quantity,
                         onValueChange = { quantity = it },
                         label = { Text("Ilość") },
-                        modifier = Modifier.width(100.dp)
+                        modifier = Modifier
+                            .width(100.dp)
+                            .focusRequester(quantityFocusRequester),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                if (inputText.isBlank()) {
+                                    expanded = true
+                                } else {
+                                    addItemFromManualInput()
+                                }
+                            }
+                        )
                     )
 
                     Spacer(Modifier.width(8.dp))
@@ -1230,25 +1306,7 @@ fun SpisScreen() {
 
                 Row {
                     Button(onClick = {
-                        pushUndoSnapshot()
-                        val quantityValue = quantity.toIntOrNull() ?: 1
-                        val allowPrefillQuantity = quantity.trim() == "1"
-                        val allowPrefillUnit = unit == UnitType.SZT
-                        val newRow = applyParsing(
-                            parser = parser,
-                            row = SpisRow(type = RowType.ITEM),
-                            rawText = inputText,
-                            quantity = quantityValue,
-                            unit = unit,
-                            allowPrefillQuantity = allowPrefillQuantity,
-                            allowPrefillUnit = allowPrefillUnit
-                        )
-                        rows.add(newRow)
-                        debugCodeModeByRowId[newRow.id] = false
-                        markLastAdded(newRow.id)
-                        inputText = ""
-                        quantity = "1"
-                        textFocusRequester.requestFocus()
+                        addItemFromManualInput()
                     }) {
                         Text("Add Item")
                     }
@@ -1322,6 +1380,25 @@ fun SpisScreen() {
                     }
                 }
                 Spacer(Modifier.height(16.dp))
+            }
+
+                item {
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+
+            if (!isAtBottom) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(workAreaIndex)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 12.dp, bottom = 120.dp),
+                    text = { Text("Jump to work area") }
+                )
             }
         }
     }
