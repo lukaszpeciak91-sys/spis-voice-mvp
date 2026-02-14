@@ -60,7 +60,22 @@ import kotlinx.coroutines.launch
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 
 private const val TAG = "SpisScreen"
-private const val CSV_HEADER = "row_type;text;qty_counted;unit"
+private const val CSV_HEADER = "row_type;text;qty_counted;unit;sequence"
+
+private fun computeSequenceByRowId(rows: List<SpisRow>): Map<String, Int?> {
+    var currentSequence = 0
+    val sequenceByRowId = LinkedHashMap<String, Int?>(rows.size)
+    rows.forEach { row ->
+        if (row.type == RowType.MARKER) {
+            currentSequence = 0
+            sequenceByRowId[row.id] = null
+        } else {
+            currentSequence += 1
+            sequenceByRowId[row.id] = currentSequence
+        }
+    }
+    return sequenceByRowId
+}
 
 private data class CatalogImportResult(
     val metadata: CatalogMetadata?,
@@ -75,10 +90,12 @@ private fun escapeCsv(value: String): String {
 }
 
 private fun buildRawCsv(rows: List<SpisRow>): String {
+    val sequenceByRowId = computeSequenceByRowId(rows)
     return buildString {
         append(CSV_HEADER)
         append("\n")
         rows.forEach { row ->
+            val sequence = sequenceByRowId[row.id]?.toString().orEmpty()
             when (row.type) {
                 RowType.ITEM -> {
                     val qty = row.quantity?.toString().orEmpty()
@@ -88,7 +105,8 @@ private fun buildRawCsv(rows: List<SpisRow>): String {
                             "ITEM",
                             row.rawText,
                             qty,
-                            unitLabel
+                            unitLabel,
+                            sequence
                         ).joinToString(";") { escapeCsv(it) }
                     )
                 }
@@ -99,7 +117,8 @@ private fun buildRawCsv(rows: List<SpisRow>): String {
                             "MARKER",
                             row.rawText,
                             "",
-                            ""
+                            "",
+                            sequence
                         ).joinToString(";") { escapeCsv(it) }
                     )
                 }
@@ -342,6 +361,9 @@ fun SpisScreen() {
                 lastVisible >= totalItems - 1
             }
         }
+    }
+    val sequenceByRowId by remember {
+        derivedStateOf { computeSequenceByRowId(rows) }
     }
 
     fun snapshotState() = UiSnapshot(
@@ -1090,6 +1112,11 @@ fun SpisScreen() {
                                         .clickable(enabled = status != ParseStatus.OK) {
                                             parseDialogRow = row
                                         }
+                                )
+                                Text(
+                                    text = "${sequenceByRowId[row.id] ?: ""}",
+                                    modifier = Modifier.padding(end = 8.dp),
+                                    fontWeight = FontWeight.SemiBold
                                 )
                                 Text("${row.rawText} | ${row.quantity} ${row.unit?.label}")
                             }
