@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.*
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.text.KeyboardActions
@@ -984,9 +986,11 @@ fun SpisScreen() {
             ) {
                 items(rows, key = { it.id }) { row ->
                 val isHighlighted = row.id == lastAddedId
-                val baseBackground = if (row.type == RowType.MARKER) Color.LightGray else Color.Transparent
-                val highlightColor = Color(0xFFFFF3CD)
-                val rowBackground = if (isHighlighted) highlightColor else baseBackground
+                val rowShape = RoundedCornerShape(8.dp)
+                val baseBackground = if (row.type == RowType.MARKER) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent
+                val highlightBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                val rowBackground = if (isHighlighted) highlightBackground else baseBackground
+                val highlightBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
 
                 if (row.type == RowType.MARKER) {
                     val isEditingMarker = editingMarkerId == row.id
@@ -994,7 +998,12 @@ fun SpisScreen() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(rowBackground)
+                            .background(rowBackground, rowShape)
+                            .border(
+                                width = if (isHighlighted) 1.dp else 0.dp,
+                                color = if (isHighlighted) highlightBorderColor else Color.Transparent,
+                                shape = rowShape
+                            )
                             .clickable {
                                 editingMarkerId = row.id
                                 editingId = null
@@ -1043,7 +1052,12 @@ fun SpisScreen() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(rowBackground)
+                            .background(rowBackground, rowShape)
+                            .border(
+                                width = if (isHighlighted) 1.dp else 0.dp,
+                                color = if (isHighlighted) highlightBorderColor else Color.Transparent,
+                                shape = rowShape
+                            )
                             .clickable {
                                 editingId = row.id
                                 editingMarkerId = null
@@ -1340,11 +1354,17 @@ fun SpisScreen() {
 
                 Spacer(Modifier.height(8.dp))
 
-                Row {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Button(
                         onClick = {
                             addItemFromManualInput()
                         },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = actionButtonBaseColor,
                             contentColor = actionButtonOnBaseColor
@@ -1352,8 +1372,6 @@ fun SpisScreen() {
                     ) {
                         Text("Add Item")
                     }
-
-                    Spacer(Modifier.width(8.dp))
 
                     OutlinedButton(
                         onClick = {
@@ -1363,9 +1381,9 @@ fun SpisScreen() {
                             editingId = null
                             editingMarkerId = null
                         },
+                        modifier = Modifier.align(Alignment.Start),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = actionButtonBaseColor,
-                            contentColor = actionButtonOnBaseColor
+                            contentColor = actionButtonBaseColor
                         )
                     ) {
                         Text("Add Marker")
