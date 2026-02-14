@@ -365,6 +365,10 @@ fun SpisScreen() {
     val sequenceByRowId by remember {
         derivedStateOf { computeSequenceByRowId(rows) }
     }
+    val actionButtonBaseColor = MaterialTheme.colorScheme.primary
+    val actionButtonOnBaseColor = MaterialTheme.colorScheme.onPrimary
+    val actionButtonAccentColor = MaterialTheme.colorScheme.secondary
+    val actionButtonOnAccentColor = MaterialTheme.colorScheme.onSecondary
 
     fun snapshotState() = UiSnapshot(
         rows = rows.map { it.copy() },
@@ -952,7 +956,11 @@ fun SpisScreen() {
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(72.dp)
+                            .height(72.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isRecording) actionButtonAccentColor else actionButtonBaseColor,
+                            contentColor = if (isRecording) actionButtonOnAccentColor else actionButtonOnBaseColor
+                        )
                     ) {
                         Text(if (!isRecording) "🎙️ Nagraj" else "⏹ Stop")
                     }
@@ -1114,7 +1122,7 @@ fun SpisScreen() {
                                         }
                                 )
                                 Text(
-                                    text = "${sequenceByRowId[row.id] ?: ""}",
+                                    text = sequenceByRowId[row.id]?.let { "$it." }.orEmpty(),
                                     modifier = Modifier.padding(end = 8.dp),
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -1234,21 +1242,37 @@ fun SpisScreen() {
                             redoStack.add(snapshotState())
                             restoreSnapshot(previous)
                         }
-                    }, enabled = undoStack.isNotEmpty()) { Text("Undo") }
+                    },
+                        enabled = undoStack.isNotEmpty(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = actionButtonBaseColor,
+                            contentColor = actionButtonOnBaseColor
+                        )
+                    ) { Text("Undo") }
                     OutlinedButton(onClick = {
                         if (redoStack.isNotEmpty()) {
                             val next = redoStack.removeLast()
                             undoStack.add(snapshotState())
                             restoreSnapshot(next)
                         }
-                    }, enabled = redoStack.isNotEmpty()) { Text("Redo") }
+                    },
+                        enabled = redoStack.isNotEmpty(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = actionButtonBaseColor,
+                            contentColor = actionButtonOnBaseColor
+                        )
+                    ) { Text("Redo") }
 
                     Spacer(modifier = Modifier.weight(1f))
 
                     OutlinedButton(
-                        onClick = { forceCodeModeNext = !forceCodeModeNext }
+                        onClick = { forceCodeModeNext = !forceCodeModeNext },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (forceCodeModeNext) actionButtonAccentColor else actionButtonBaseColor,
+                            contentColor = if (forceCodeModeNext) actionButtonOnAccentColor else actionButtonOnBaseColor
+                        )
                     ) {
-                        Text("CODE")
+                        Text(if (forceCodeModeNext) "CODE ON" else "CODE OFF")
                     }
                 }
 
@@ -1291,7 +1315,13 @@ fun SpisScreen() {
                     Spacer(Modifier.width(8.dp))
 
                     Box {
-                        Button(onClick = { expanded = true }) {
+                        Button(
+                            onClick = { expanded = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = actionButtonBaseColor,
+                                contentColor = actionButtonOnBaseColor
+                            )
+                        ) {
                             Text(unit.label)
                         }
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -1311,21 +1341,33 @@ fun SpisScreen() {
                 Spacer(Modifier.height(8.dp))
 
                 Row {
-                    Button(onClick = {
-                        addItemFromManualInput()
-                    }) {
+                    Button(
+                        onClick = {
+                            addItemFromManualInput()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = actionButtonBaseColor,
+                            contentColor = actionButtonOnBaseColor
+                        )
+                    ) {
                         Text("Add Item")
                     }
 
                     Spacer(Modifier.width(8.dp))
 
-                    OutlinedButton(onClick = {
-                        pushUndoSnapshot()
-                        markerText = ""
-                        showMarkerDialog = true
-                        editingId = null
-                        editingMarkerId = null
-                    }) {
+                    OutlinedButton(
+                        onClick = {
+                            pushUndoSnapshot()
+                            markerText = ""
+                            showMarkerDialog = true
+                            editingId = null
+                            editingMarkerId = null
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = actionButtonBaseColor,
+                            contentColor = actionButtonOnBaseColor
+                        )
+                    ) {
                         Text("Add Marker")
                     }
                 }
