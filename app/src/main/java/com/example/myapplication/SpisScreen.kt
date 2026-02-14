@@ -367,6 +367,14 @@ fun SpisScreen() {
         redoStack.clear()
     }
 
+    fun markLastAdded(rowId: String) {
+        if (lastAddedId == rowId) {
+            lastAddedId = null
+        }
+        lastAddedId = rowId
+        highlightExpiresAt = System.currentTimeMillis() + 2500L
+    }
+
     fun addItemFromManualInput() {
         pushUndoSnapshot()
         val quantityValue = quantity.toIntOrNull() ?: 1
@@ -401,14 +409,6 @@ fun SpisScreen() {
             listState.scrollToItem(workAreaIndex)
             initialWorkAreaScrollDone = true
         }
-    }
-
-    fun markLastAdded(rowId: String) {
-        if (lastAddedId == rowId) {
-            lastAddedId = null
-        }
-        lastAddedId = rowId
-        highlightExpiresAt = System.currentTimeMillis() + 2500L
     }
 
     fun enqueueRecordedAudio(file: File) {
@@ -1368,7 +1368,7 @@ fun SpisScreen() {
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = 12.dp, bottom = 120.dp),
-                    text = { Text("Jump to work area") }
+                    content = { Text("Jump to work area") }
                 )
             }
         }
