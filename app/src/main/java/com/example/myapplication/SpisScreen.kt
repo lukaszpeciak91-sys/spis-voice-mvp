@@ -1196,7 +1196,11 @@ fun SpisScreen() {
             }
 
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                     OutlinedButton(onClick = {
                         if (undoStack.isNotEmpty()) {
                             val previous = undoStack.removeLast()
@@ -1211,6 +1215,14 @@ fun SpisScreen() {
                             restoreSnapshot(next)
                         }
                     }, enabled = redoStack.isNotEmpty()) { Text("Redo") }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    OutlinedButton(
+                        onClick = { forceCodeModeNext = !forceCodeModeNext }
+                    ) {
+                        Text("CODE")
+                    }
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -1244,11 +1256,7 @@ fun SpisScreen() {
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(
                             onDone = {
-                                if (inputText.isBlank()) {
-                                    expanded = true
-                                } else {
-                                    addItemFromManualInput()
-                                }
+                                textFocusRequester.requestFocus()
                             }
                         )
                     )
@@ -1296,27 +1304,6 @@ fun SpisScreen() {
                 }
 
                 Spacer(Modifier.height(8.dp))
-
-                val toggleChipColors = FilterChipDefaults.filterChipColors(
-                    containerColor = Color(0xFFFFCDD2),
-                    labelColor = contentColorFor(Color(0xFFFFCDD2)),
-                    selectedContainerColor = Color(0xFFC8E6C9),
-                    selectedLabelColor = contentColorFor(Color(0xFFC8E6C9))
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = forceCodeModeNext,
-                        onClick = { forceCodeModeNext = !forceCodeModeNext },
-                        colors = toggleChipColors,
-                        label = {
-                            Text("TRYB KODU ${if (forceCodeModeNext) "ON" else "OFF"}")
-                        }
-                    )
-                }
 
                 Spacer(Modifier.height(6.dp))
 
