@@ -414,6 +414,7 @@ fun SpisScreen() {
     fun enqueueRecordedAudio(file: File) {
         when (val startResult = VoskTranscriptionManager.startTranscription(context, file)) {
             is TranscriptionStartResult.Started -> {
+                pushUndoSnapshot()
                 val audioRow = SpisRow(
                     type = RowType.ITEM,
                     rawText = "[AUDIO] ${file.name} (⏳ transkrypcja…)",
@@ -428,6 +429,7 @@ fun SpisScreen() {
             }
 
             is TranscriptionStartResult.Buffered -> {
+                pushUndoSnapshot()
                 val audioRow = SpisRow(
                     type = RowType.ITEM,
                     rawText = "[AUDIO] ${file.name} (⏱ oczekuje…)",
@@ -693,6 +695,7 @@ fun SpisScreen() {
         val index = rows.indexOfFirst { it.transcriptionJobId == jobId }
         Log.i(TAG, "UI: received transcription update jobId=$jobId matchedRow=${index != -1}")
         if (index == -1) return
+        pushUndoSnapshot()
         val audioFile = File(audioPath)
         val currentRow = rows[index]
         val voskRawText = resultText.orEmpty()
@@ -920,39 +923,7 @@ fun SpisScreen() {
                                 val file = recorder.stop()
                                 isRecording = false
                                 if (file != null) {
-                                    when (val startResult = VoskTranscriptionManager.startTranscription(context, file)) {
-                                        is TranscriptionStartResult.Started -> {
-                                            val audioRow = SpisRow(
-                                                type = RowType.ITEM,
-                                                rawText = "[AUDIO] ${file.name} (transcribing...)",
-                                                quantity = 1,
-                                                unit = UnitType.SZT,
-                                                parseStatus = ParseStatus.WARNING,
-                                                parseDebug = listOf("Transcribing audio..."),
-                                                transcriptionJobId = startResult.jobId
-                                            )
-                                            rows.add(audioRow)
-                                            markLastAdded(audioRow.id)
-                                        }
-
-                                        is TranscriptionStartResult.Buffered -> {
-                                            val audioRow = SpisRow(
-                                                type = RowType.ITEM,
-                                                rawText = "[AUDIO] ${file.name} (⏱ oczekuje…)",
-                                                quantity = 1,
-                                                unit = UnitType.SZT,
-                                                parseStatus = ParseStatus.WARNING,
-                                                parseDebug = listOf("⏱ oczekuje…"),
-                                                transcriptionJobId = startResult.jobId
-                                            )
-                                            rows.add(audioRow)
-                                            markLastAdded(audioRow.id)
-                                        }
-
-                                        is TranscriptionStartResult.Busy -> {
-                                            Toast.makeText(context, startResult.message, Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
+                                    enqueueRecordedAudio(file)
                                 }
                                 textFocusRequester.requestFocus()
                             }
