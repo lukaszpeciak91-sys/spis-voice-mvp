@@ -45,4 +45,27 @@ class CommandRouterTest {
         assertEquals("A.0204Z2035", item.name)
         assertEquals(ParseStatus.OK, item.parseStatus)
     }
+
+    @Test
+    fun keepsPartBNumericParsingUnchangedInForcedCodeMode() {
+        val routed = router.route(
+            "sto dwa osiemdziesiat piec ilosc dwadziescia szesc metrow",
+            forceCodeMode = true
+        )
+        val item = routed.result as VoiceCommandResult.Item
+        assertEquals(CommandRouter.Route.CODE, routed.route)
+        assertEquals("10285", item.name)
+        assertEquals(26, item.quantity)
+        assertEquals(UnitType.M, item.unit)
+        assertEquals(ParseStatus.OK, item.parseStatus)
+    }
+
+    @Test
+    fun keepsOffModeUnchangedForPlainSpokenNumbers() {
+        val routed = router.route("sto dwa osiemdziesiat piec")
+        val item = routed.result as VoiceCommandResult.Item
+        assertEquals(CommandRouter.Route.NONE, routed.route)
+        assertEquals("sto dwa osiemdziesiat piec", item.name)
+        assertEquals(ParseStatus.OK, item.parseStatus)
+    }
 }

@@ -1,6 +1,7 @@
 package com.example.myapplication.parsing
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CodeModeNormalizerTest {
@@ -188,5 +189,28 @@ class CodeModeNormalizerTest {
         assertEquals("A.0204Z2035", codeSample.normalized)
         val slashSample = normalizer.normalize("CH4-150/BAX")
         assertEquals("CH4-150/BAX", slashSample.normalized)
+    }
+
+    @Test
+    fun classifiesAndAssemblesSpokenNumericCodeWithSeparators() {
+        val result = normalizer.normalize("sto sześć pauza siedemdziesiąt osiem łamane przez dziewięć")
+        assertEquals("106-78/9", result.normalized)
+        assertEquals(CodeModeNormalizer.CodeModeClass.SPOKEN_NUMERIC_CODE, result.codeModeClass)
+        assertTrue(result.assemblySteps.contains("hyphen:-"))
+        assertTrue(result.assemblySteps.contains("slash:/"))
+    }
+
+    @Test
+    fun assemblesMultiSegmentSpokenNumericCodeByConcatenation() {
+        val result = normalizer.normalize("sto dwa osiemdziesiat piec siedemnascie")
+        assertEquals("1028517", result.normalized)
+        assertEquals(CodeModeNormalizer.CodeModeClass.SPOKEN_NUMERIC_CODE, result.codeModeClass)
+    }
+
+    @Test
+    fun keepsAlphanumClassificationForMixedCode() {
+        val result = normalizer.normalize("trzy es nr trzydzieści zero zero")
+        assertEquals("3S300", result.normalized)
+        assertEquals(CodeModeNormalizer.CodeModeClass.ALPHANUM_CODE, result.codeModeClass)
     }
 }
