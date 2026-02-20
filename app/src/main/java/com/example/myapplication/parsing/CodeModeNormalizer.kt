@@ -3,21 +3,47 @@ package com.example.myapplication.parsing
 import android.util.Log
 
 class CodeModeNormalizer {
-    data class Result(val normalized: String, val tokens: List<String>)
+    enum class CodeModeClass {
+        ALPHANUM_CODE,
+        SPOKEN_NUMERIC_CODE,
+        FREE_TEXT
+    }
+
+    data class Result(
+        val normalized: String,
+        val tokens: List<String>,
+        val codeModeClass: CodeModeClass,
+        val assemblySteps: String
+    )
 
     fun normalize(rawText: String, enableFuzzy: Boolean = false): Result {
         val trimmed = rawText.trim()
         if (trimmed.isNotEmpty() && trimmed.any { it.isDigit() } && trimmed.none { it.isWhitespace() }) {
             val normalized = trimmed.uppercase().replace("X", "x")
-            return Result(normalized, emptyList())
+            return Result(
+                normalized = normalized,
+                tokens = emptyList(),
+                codeModeClass = CodeModeClass.ALPHANUM_CODE,
+                assemblySteps = "raw_compact_code"
+            )
         }
 
         val tokens = normalizeFractions(tokenize(rawText))
         if (tokens.isEmpty()) {
-            return Result("", emptyList())
+            return Result(
+                normalized = "",
+                tokens = emptyList(),
+                codeModeClass = CodeModeClass.FREE_TEXT,
+                assemblySteps = "empty_tokens"
+            )
+        }
+
+        if (isSpokenNumericCode(tokens)) {
+            return assembleSpokenNumericCode(tokens)
         }
 
         val builder = StringBuilder()
+        val codeLikeInput = isCodeLike(tokens)
         var segment = 0
         var hasSegment = false
         var hasHundreds = false
@@ -156,6 +182,13 @@ class CodeModeNormalizer {
                 index += 1
                 continue
             }
+
+            if (shouldPreserveLiteralToken(tokens, index, codeLikeInput)) {
+                builder.append(normalizedToken.uppercase())
+                index += 1
+                continue
+            }
+
             val fuzzyLetter = fuzzyYMap(normalizedToken)
             if (fuzzyLetter != null) {
                 Log.i(CODE_MODE_TAG, "fuzzyYMap: $normalizedToken -> Y")
@@ -182,7 +215,96 @@ class CodeModeNormalizer {
                     it == '-' ||
                     it == 'x'
             }
-        return Result(normalized, tokens)
+        return Result(
+            normalized = normalized,
+            tokens = tokens,
+            codeModeClass = if (normalized.isBlank()) CodeModeClass.FREE_TEXT else CodeModeClass.ALPHANUM_CODE,
+            assemblySteps = "default_assembly(tokens=${tokens.size})"
+        )
+    }
+
+    private fun assembleSpokenNumericCode(tokens: List<String>): Result {
+        val builder = StringBuilder()
+        val steps = mutableListOf<String>()
+        var index = 0
+        while (index < tokens.size) {
+            val token = tokens[index]
+            val slashMatch = matchSlashToken(tokens, index)
+            if (slashMatch != null) {
+                builder.append("/")
+                steps.add("slash:/")
+                index += slashMatch
+                continue
+            }
+            if (token == "kropka") {
+                builder.append(".")
+                steps.add("dot:.")
+                index += 1
+                continue
+            }
+            if (token in hyphenTokens) {
+                builder.append("-")
+                steps.add("hyphen:-")
+                index += 1
+                continue
+            }
+            if (token.all { it.isDigit() }) {
+                builder.append(token)
+                steps.add("digits:$token")
+                index += 1
+                continue
+            }
+            val parsed = SpokenNumberParser.parseSpokenNumber(tokens, index)
+            if (parsed != null) {
+                builder.append(parsed.value)
+                steps.add("num:${tokens.subList(index, index + parsed.consumed).joinToString("+")}=${parsed.value}")
+                index += parsed.consumed
+                continue
+            }
+            steps.add("skip:$token")
+            index += 1
+        }
+        val assembled = builder.toString()
+        return Result(
+            normalized = assembled,
+            tokens = tokens,
+            codeModeClass = CodeModeClass.SPOKEN_NUMERIC_CODE,
+            assemblySteps = summarizeAssemblySteps(steps)
+        )
+    }
+
+    private fun summarizeAssemblySteps(steps: List<String>, maxLength: Int = 280): String {
+        val summary = steps.joinToString(" | ")
+        if (summary.length <= maxLength) return summary
+        return summary.take(maxLength - 3) + "..."
+    }
+
+    private fun isSpokenNumericCode(tokens: List<String>): Boolean {
+        return tokens.isNotEmpty() && tokens.all { token ->
+            token.all { it.isDigit() } ||
+                numberWords.contains(token) ||
+                token == "kropka" ||
+                token in hyphenTokens ||
+                token in slashTokens ||
+                token == "przez"
+        }
+        return Result(normalizeCableManufacturerSuffix(normalized), tokens)
+    }
+
+    internal fun normalizeCableManufacturerSuffix(code: String): String {
+        if (!looksLikeCableCode(code)) {
+            return code
+        }
+        val suffixMatch = cableSuffixVariantRegex.find(code) ?: return code
+        return code.replaceRange(suffixMatch.range, suffixMatch.groupValues[1] + "NKT")
+    }
+
+    private fun looksLikeCableCode(code: String): Boolean {
+        val hasCablePrefix = cableCodePrefixes.any { code.startsWith(it) }
+        if (!hasCablePrefix) {
+            return false
+        }
+        return cableDimensionRegex.containsMatchIn(code)
     }
 
     private fun matchSlashToken(tokens: List<String>, index: Int): Int? {
@@ -447,6 +569,16 @@ class CodeModeNormalizer {
             "dziesiata" to 10,
             "dziesiate" to 10
         )
+
+        private val numberWords = buildSet {
+            addAll(onesMap.keys)
+            addAll(teensMap.keys)
+            addAll(tensMap.keys)
+            addAll(hundredsMap.keys)
+        }
+        private val cableCodePrefixes = listOf("YKY", "YDYP", "YDY", "OWY")
+        private val cableDimensionRegex = Regex("\\d+x\\d")
+        private val cableSuffixVariantRegex = Regex("([-/]?)(MKD|MKP|KATE|ENKATE)$")
     }
 
     private fun fuzzyYMap(token: String): String? {
@@ -463,6 +595,25 @@ class CodeModeNormalizer {
             return token.uppercase()
         }
         return null
+    }
+
+    private fun shouldPreserveLiteralToken(tokens: List<String>, index: Int, codeLikeInput: Boolean): Boolean {
+        val token = tokens[index]
+        if (!token.all { it in 'a'..'z' }) {
+            return false
+        }
+        if (token.length == 1) {
+            val previousIsDigits = tokens.getOrNull(index - 1)?.all { it.isDigit() } == true
+            val nextIsDigits = tokens.getOrNull(index + 1)?.all { it.isDigit() } == true
+            return (previousIsDigits && nextIsDigits) || codeLikeInput
+        }
+        return codeLikeInput
+    }
+
+    private fun isCodeLike(tokens: List<String>): Boolean {
+        val hasDigits = tokens.any { token -> token.any { it.isDigit() } }
+        val hasLetters = tokens.any { token -> token.any { it in 'a'..'z' } }
+        return hasDigits && hasLetters
     }
 
 }

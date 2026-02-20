@@ -1,6 +1,7 @@
 package com.example.myapplication.parsing
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CodeModeNormalizerTest {
@@ -182,11 +183,56 @@ class CodeModeNormalizerTest {
         assertEquals("2,5", halfResult.normalized)
     }
 
+
+    @Test
+    fun normalizesCableManufacturerSuffixVariantsToNkt() {
+        val spokenSuffix = normalizer.normalize("igrek ka igrek trzy na dwa i pół en ka te")
+        assertEquals("YKY3x2,5NKT", spokenSuffix.normalized)
+
+        val mkdSuffix = normalizer.normalize("igrek ka igrek trzy na dwa i pół mkd")
+        assertEquals("YKY3x2,5NKT", mkdSuffix.normalized)
+
+        val mkpSuffix = normalizer.normalize("igrek ka igrek trzy na dwa i pół mkp")
+        assertEquals("YKY3x2,5NKT", mkpSuffix.normalized)
+
+        val kateSuffix = normalizer.normalize("igrek ka igrek trzy na dwa i pół kate")
+        assertEquals("YKY3x2,5NKT", kateSuffix.normalized)
+    }
+
+    @Test
+    fun doesNotChangeNonCableCodesWithSimilarSuffix() {
+        val result = normalizer.normalize("abc 123 mkp")
+        assertEquals("ABC123MKP", result.normalized)
+    }
+
     @Test
     fun keepsRawCodeInputs() {
         val codeSample = normalizer.normalize("A.0204Z2035")
         assertEquals("A.0204Z2035", codeSample.normalized)
         val slashSample = normalizer.normalize("CH4-150/BAX")
         assertEquals("CH4-150/BAX", slashSample.normalized)
+    }
+
+    @Test
+    fun classifiesAndAssemblesSpokenNumericCodeWithSeparators() {
+        val result = normalizer.normalize("sto sześć pauza siedemdziesiąt osiem łamane przez dziewięć")
+        assertEquals("106-78/9", result.normalized)
+        assertEquals(CodeModeNormalizer.CodeModeClass.SPOKEN_NUMERIC_CODE, result.codeModeClass)
+        assertTrue(result.assemblySteps.contains("hyphen:-"))
+        assertTrue(result.assemblySteps.contains("slash:/"))
+    }
+
+    @Test
+    fun assemblesMultiSegmentSpokenNumericCodeByConcatenation() {
+        val result = normalizer.normalize("sto dwa osiemdziesiat piec siedemnascie")
+        assertEquals("1028517", result.normalized)
+        assertEquals(CodeModeNormalizer.CodeModeClass.SPOKEN_NUMERIC_CODE, result.codeModeClass)
+    }
+
+    @Test
+    fun keepsAlphanumClassificationForMixedCode() {
+        val result = normalizer.normalize("trzy es nr trzydzieści zero zero")
+        assertEquals("3S300", result.normalized)
+        assertEquals(CodeModeNormalizer.CodeModeClass.ALPHANUM_CODE, result.codeModeClass)
     }
 }
