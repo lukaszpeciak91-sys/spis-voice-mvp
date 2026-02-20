@@ -258,8 +258,6 @@ private fun applyParsing(
     )
 }
 
-private data class DebugQuantitySplit(val partA: String, val partB: String)
-
 private enum class InputMode {
     VOICE,
     MANUAL
@@ -271,34 +269,6 @@ private data class UiSnapshot(
     val quantity: String,
     val unit: UnitType
 )
-
-private fun normalizePolishToken(token: String): String {
-    return token.lowercase()
-        .replace('ą', 'a')
-        .replace('ć', 'c')
-        .replace('ę', 'e')
-        .replace('ł', 'l')
-        .replace('ń', 'n')
-        .replace('ó', 'o')
-        .replace('ś', 's')
-        .replace('ż', 'z')
-        .replace('ź', 'z')
-}
-
-private fun splitByQuantityMarkerDebug(text: String): DebugQuantitySplit? {
-    val matches = Regex("\\S+").findAll(text)
-    for (match in matches) {
-        val token = match.value.trim(',', '.', ':', ';')
-        if (token.isBlank()) continue
-        val normalized = normalizePolishToken(token)
-        if (normalized == "ilosc") {
-            val partA = text.substring(0, match.range.first).trim()
-            val partB = text.substring(match.range.last + 1).trim()
-            return DebugQuantitySplit(partA = partA, partB = partB)
-        }
-    }
-    return null
-}
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -545,67 +515,26 @@ fun SpisScreen() {
         }
     }
 
+    fun resolveCodeMode(row: SpisRow): Boolean {
+        return debugCodeModeByRowId[row.id]
+            ?: row.parseDebug?.any { it.contains("code mode", ignoreCase = true) }
+            ?: forceCodeModeNext
+    }
+
     fun buildDebugPayload(row: SpisRow, index: Int): String {
-        val voskRawText = row.voskRawText?.ifBlank { null }
-        val routerInput = (voskRawText ?: row.rawText).trim()
-        val split = splitByQuantityMarkerDebug(routerInput)
-        val partA = split?.partA ?: routerInput
-        val partB = split?.partB.orEmpty()
-        val codeMode =
-            debugCodeModeByRowId[row.id]
-                ?: row.parseDebug?.any { it.contains("code mode", ignoreCase = true) }
-                ?: forceCodeModeNext
-        val normalizedA = row.normalizedText ?: partA
-        val qtyUnit = "${row.quantity} ${row.unit?.label.orEmpty()}".trim()
-        val savedDisplay = "${row.rawText} | ${row.quantity} ${row.unit?.label}"
-        val savedQtyUnit = "${row.quantity} ${row.unit?.label.orEmpty()}".trim()
-        return buildString {
-            append("Entry #")
-            append(index + 1)
-            append(" (id: ")
-            append(row.id)
-            append(")\n")
-            append("vosk_raw: ")
-            append(voskRawText ?: "-")
-            append("\n")
-            append("router_input: ")
-            append(routerInput)
-            append("\n")
-            append("partA: ")
-            append(partA)
-            append("\n")
-            append("partB: ")
-            append(partB)
-            append("\n")
-            append("codeMode: ")
-            append(if (codeMode) "ON" else "OFF")
-            append("\n")
-            append("normalizedA: ")
-            append(normalizedA)
-            append("\n")
-            append("qty/unit: ")
-            append(qtyUnit)
-            append("\n")
-            append("saved_display: ")
-            append(savedDisplay)
-            append("\n")
-            append("saved_rawText: ")
-            append(row.rawText)
-            append("\n")
-            append("saved_normalizedText: ")
-            append(row.normalizedText ?: "null")
-            append("\n")
-            append("saved_qty/unit: ")
-            append(savedQtyUnit)
-        }
+        return com.example.myapplication.buildDebugPayload(
+            row = row,
+            index = index,
+            codeMode = resolveCodeMode(row)
+        )
     }
 
     fun buildAllDebugPayload(): String {
-        val entries = rows.filter { it.type == RowType.ITEM }
-        if (entries.isEmpty()) return ""
-        return entries.mapIndexed { index, row ->
-            buildDebugPayload(row, index)
-        }.joinToString(separator = "\n---\n")
+        return com.example.myapplication.buildAllDebugPayload(
+            rows = rows,
+            debugCodeModeByRowId = debugCodeModeByRowId,
+            forceCodeModeNext = forceCodeModeNext
+        )
     }
 
     val importCatalogLauncher = rememberLauncherForActivityResult(
@@ -1143,15 +1072,7 @@ fun SpisScreen() {
                                 Text("${row.rawText} | ${row.quantity} ${row.unit?.label}")
                             }
                             if (debugOverlayEnabled) {
-                                val voskRawText = row.voskRawText?.ifBlank { null }
-                                val routerInput = (voskRawText ?: row.rawText).trim()
-                                val split = splitByQuantityMarkerDebug(routerInput)
-                                val partA = split?.partA ?: routerInput
-                                val partB = split?.partB.orEmpty()
-                                val codeMode =
-                                    debugCodeModeByRowId[row.id]
-                                        ?: row.parseDebug?.any { it.contains("code mode", ignoreCase = true) }
-                                        ?: forceCodeModeNext
+                                val debugData = buildDebugViewData(row, resolveCodeMode(row))
                                 val rowIndex = rows.indexOfFirst { it.id == row.id }
                                 Spacer(Modifier.height(4.dp))
                                 Column(
@@ -1189,35 +1110,35 @@ fun SpisScreen() {
                                     val mutedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
 
                                     Text(
-                                        text = "VOSK RAW: ${voskRawText ?: "-"}",
+                                        text = "VOSK RAW: ${debugData.voskRaw ?: "-"}",
                                         style = debugTextStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "ROUTER INPUT: $routerInput",
+                                        text = "ROUTER INPUT (SANITIZED): ${debugData.routerInputSanitized}",
                                         style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "partA: $partA",
+                                        text = "partA: ${debugData.partA}",
                                         style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "partB: $partB",
+                                        text = "partB: ${debugData.partB}",
                                         style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "codeMode: ${if (codeMode) "ON" else "OFF"}",
+                                        text = "codeMode: ${if (debugData.codeMode) "ON" else "OFF"}",
                                         style = debugTextStyle,
                                         color = mutedColor,
                                         maxLines = 1,
