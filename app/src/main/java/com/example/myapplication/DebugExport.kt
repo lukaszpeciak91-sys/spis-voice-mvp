@@ -107,7 +107,7 @@ internal fun buildDebugPayload(row: SpisRow, index: Int, codeMode: Boolean): Str
         append("codeMode: ")
         append(if (data.codeMode) "ON" else "OFF")
         append("\n")
-        append("normalized_for_save: ")
+        append("normalizedA: ")
         append(data.normalizedForSave)
         append("\n")
         append("qty/unit: ")

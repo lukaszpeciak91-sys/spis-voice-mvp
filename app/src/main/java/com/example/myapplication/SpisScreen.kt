@@ -41,7 +41,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import com.example.myapplication.parsing.CommandRouter
-import com.example.myapplication.parsing.CodeModeNormalizer
 import com.example.myapplication.parsing.InventoryParser
 import com.example.myapplication.parsing.VoiceCommandParser
 import com.example.myapplication.parsing.VoiceCommandResult
@@ -299,7 +298,6 @@ fun SpisScreen() {
     val context = LocalContext.current
     val recorder = remember { AudioRecorder(context) }
     val parser = remember { InventoryParser() }
-    val codeModeNormalizer = remember { CodeModeNormalizer() }
     val voiceCommandParser = remember { VoiceCommandParser() }
     val commandRouter = remember { CommandRouter(voiceCommandParser = voiceCommandParser) }
     val clipboardManager = LocalClipboardManager.current
@@ -529,67 +527,6 @@ fun SpisScreen() {
             index = index,
             codeMode = resolveCodeMode(row)
         )
-        val voskRawText = row.voskRawText?.ifBlank { null }
-        val routerInput = (voskRawText ?: row.rawText).trim()
-        val split = splitByQuantityMarkerDebug(routerInput)
-        val partA = split?.partA ?: routerInput
-        val partB = split?.partB.orEmpty()
-        val codeMode =
-            debugCodeModeByRowId[row.id]
-                ?: row.parseDebug?.any { it.contains("code mode", ignoreCase = true) }
-                ?: forceCodeModeNext
-        val normalizedA = row.normalizedText ?: partA
-        val codeAnalysis = if (codeMode) codeModeNormalizer.normalize(partA, enableFuzzy = true) else null
-        val codeModeClass = codeAnalysis?.codeModeClass?.name ?: "-"
-        val assemblySteps = codeAnalysis?.assemblySteps ?: "-"
-        val qtyUnit = "${row.quantity} ${row.unit?.label.orEmpty()}".trim()
-        val savedDisplay = "${row.rawText} | ${row.quantity} ${row.unit?.label}"
-        val savedQtyUnit = "${row.quantity} ${row.unit?.label.orEmpty()}".trim()
-        return buildString {
-            append("Entry #")
-            append(index + 1)
-            append(" (id: ")
-            append(row.id)
-            append(")\n")
-            append("vosk_raw: ")
-            append(voskRawText ?: "-")
-            append("\n")
-            append("router_input: ")
-            append(routerInput)
-            append("\n")
-            append("partA: ")
-            append(partA)
-            append("\n")
-            append("partB: ")
-            append(partB)
-            append("\n")
-            append("codeMode: ")
-            append(if (codeMode) "ON" else "OFF")
-            append("\n")
-            append("normalizedA: ")
-            append(normalizedA)
-            append("\n")
-            append("codeModeClass: ")
-            append(codeModeClass)
-            append("\n")
-            append("assemblySteps: ")
-            append(assemblySteps)
-            append("\n")
-            append("qty/unit: ")
-            append(qtyUnit)
-            append("\n")
-            append("saved_display: ")
-            append(savedDisplay)
-            append("\n")
-            append("saved_rawText: ")
-            append(row.rawText)
-            append("\n")
-            append("saved_normalizedText: ")
-            append(row.normalizedText ?: "null")
-            append("\n")
-            append("saved_qty/unit: ")
-            append(savedQtyUnit)
-        }
     }
 
     fun buildAllDebugPayload(): String {
