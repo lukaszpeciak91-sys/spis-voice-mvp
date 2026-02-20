@@ -47,6 +47,16 @@ class CommandRouterTest {
     }
 
     @Test
+    fun keepsPartBNumericParsingUnchangedInForcedCodeMode() {
+        val routed = router.route(
+            "sto dwa osiemdziesiat piec ilosc dwadziescia szesc metrow",
+            forceCodeMode = true
+        )
+        val item = routed.result as VoiceCommandResult.Item
+        assertEquals(CommandRouter.Route.CODE, routed.route)
+        assertEquals("10285", item.name)
+        assertEquals(26, item.quantity)
+        assertEquals(UnitType.M, item.unit)
     fun preservesMidCodeLetterInForcedCodeModeWithQuantitySplit() {
         val routed = router.route("JAM 60 D 40 pauza 500 ilosc 10 sztuk", forceCodeMode = true)
         val item = routed.result as VoiceCommandResult.Item
@@ -57,6 +67,12 @@ class CommandRouterTest {
     }
 
     @Test
+    fun keepsOffModeUnchangedForPlainSpokenNumbers() {
+        val routed = router.route("sto dwa osiemdziesiat piec")
+        val item = routed.result as VoiceCommandResult.Item
+        assertEquals(CommandRouter.Route.NONE, routed.route)
+        assertEquals("sto dwa osiemdziesiat piec", item.name)
+        assertEquals(ParseStatus.OK, item.parseStatus)
     fun offModeOrdinaryWordsAreNotTurnedIntoCodes() {
         val routed = router.route("to jest zwykly opis", forceCodeMode = false)
         val item = routed.result as VoiceCommandResult.Item

@@ -52,7 +52,9 @@ class CommandRouter(
                     codeModeRaw = split.partA,
                     codeModeNormalized = normalized,
                     codeModeFinal = finalText,
-                    codeModeTokens = normalizedResult.tokens
+                    codeModeTokens = normalizedResult.tokens,
+                    codeModeClass = normalizedResult.codeModeClass.name,
+                    assemblySteps = normalizedResult.assemblySteps
                 )
             }
 
@@ -73,7 +75,9 @@ class CommandRouter(
                 codeModeRaw = trimmed,
                 codeModeNormalized = normalized,
                 codeModeFinal = finalText,
-                codeModeTokens = normalizedResult.tokens
+                codeModeTokens = normalizedResult.tokens,
+                codeModeClass = normalizedResult.codeModeClass.name,
+                assemblySteps = normalizedResult.assemblySteps
             )
         }
 
@@ -91,7 +95,8 @@ class CommandRouter(
         if (codeTrigger != null) {
             val split = splitByQuantityMarker(codeTrigger.afterTrigger)
             if (split != null) {
-                val normalized = codeModeNormalizer.normalize(split.partA).normalized
+                val normalizedResult = codeModeNormalizer.normalize(split.partA)
+                val normalized = normalizedResult.normalized
                 val finalText = if (normalized.isBlank()) split.partA else normalized
                 val quantityResult = voiceCommandParser.parseQuantityAndUnit(split.partB)
                 Log.i(
@@ -110,10 +115,21 @@ class CommandRouter(
                     parseStatus = quantityResult.parseStatus,
                     debug = listOf("VoiceCommand: code mode") + quantityResult.debug
                 )
-                return RoutedCommand(route = Route.CODE, result = item, alias = codeTrigger.alias)
+                return RoutedCommand(
+                    route = Route.CODE,
+                    result = item,
+                    alias = codeTrigger.alias,
+                    codeModeRaw = split.partA,
+                    codeModeNormalized = normalized,
+                    codeModeFinal = finalText,
+                    codeModeTokens = normalizedResult.tokens,
+                    codeModeClass = normalizedResult.codeModeClass.name,
+                    assemblySteps = normalizedResult.assemblySteps
+                )
             }
 
-            val normalized = codeModeNormalizer.normalize(codeTrigger.afterTrigger).normalized
+            val normalizedResult = codeModeNormalizer.normalize(codeTrigger.afterTrigger)
+            val normalized = normalizedResult.normalized
             val item = VoiceCommandResult.Item(
                 name = normalized,
                 quantity = null,
@@ -121,7 +137,17 @@ class CommandRouter(
                 parseStatus = ParseStatus.OK,
                 debug = listOf("VoiceCommand: code mode")
             )
-            return RoutedCommand(route = Route.CODE, result = item, alias = codeTrigger.alias)
+            return RoutedCommand(
+                route = Route.CODE,
+                result = item,
+                alias = codeTrigger.alias,
+                codeModeRaw = codeTrigger.afterTrigger,
+                codeModeNormalized = normalized,
+                codeModeFinal = normalized,
+                codeModeTokens = normalizedResult.tokens,
+                codeModeClass = normalizedResult.codeModeClass.name,
+                assemblySteps = normalizedResult.assemblySteps
+            )
         }
 
         return RoutedCommand(route = Route.NONE, result = voiceCommandParser.parse(trimmed))
@@ -160,7 +186,9 @@ class CommandRouter(
         val codeModeRaw: String? = null,
         val codeModeNormalized: String? = null,
         val codeModeFinal: String? = null,
-        val codeModeTokens: List<String> = emptyList()
+        val codeModeTokens: List<String> = emptyList(),
+        val codeModeClass: String? = null,
+        val assemblySteps: String? = null
     )
 
     enum class Route {

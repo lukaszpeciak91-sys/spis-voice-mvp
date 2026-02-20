@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import com.example.myapplication.parsing.CommandRouter
+import com.example.myapplication.parsing.CodeModeNormalizer
 import com.example.myapplication.parsing.InventoryParser
 import com.example.myapplication.parsing.VoiceCommandParser
 import com.example.myapplication.parsing.VoiceCommandResult
@@ -328,6 +329,7 @@ fun SpisScreen() {
     val context = LocalContext.current
     val recorder = remember { AudioRecorder(context) }
     val parser = remember { InventoryParser() }
+    val codeModeNormalizer = remember { CodeModeNormalizer() }
     val voiceCommandParser = remember { VoiceCommandParser() }
     val commandRouter = remember { CommandRouter(voiceCommandParser = voiceCommandParser) }
     val clipboardManager = LocalClipboardManager.current
@@ -556,6 +558,9 @@ fun SpisScreen() {
                 ?: row.parseDebug?.any { it.contains("code mode", ignoreCase = true) }
                 ?: forceCodeModeNext
         val normalizedA = row.normalizedText ?: partA
+        val codeAnalysis = if (codeMode) codeModeNormalizer.normalize(partA, enableFuzzy = true) else null
+        val codeModeClass = codeAnalysis?.codeModeClass?.name ?: "-"
+        val assemblySteps = codeAnalysis?.assemblySteps ?: "-"
         val qtyUnit = "${row.quantity} ${row.unit?.label.orEmpty()}".trim()
         val savedDisplay = "${row.rawText} | ${row.quantity} ${row.unit?.label}"
         val savedQtyUnit = "${row.quantity} ${row.unit?.label.orEmpty()}".trim()
@@ -582,6 +587,12 @@ fun SpisScreen() {
             append("\n")
             append("normalizedA: ")
             append(normalizedA)
+            append("\n")
+            append("codeModeClass: ")
+            append(codeModeClass)
+            append("\n")
+            append("assemblySteps: ")
+            append(assemblySteps)
             append("\n")
             append("qty/unit: ")
             append(qtyUnit)
