@@ -18,6 +18,7 @@ class CodeModeNormalizer {
         }
 
         val builder = StringBuilder()
+        val codeLikeInput = isCodeLike(tokens)
         var segment = 0
         var hasSegment = false
         var hasHundreds = false
@@ -156,6 +157,13 @@ class CodeModeNormalizer {
                 index += 1
                 continue
             }
+
+            if (shouldPreserveLiteralToken(tokens, index, codeLikeInput)) {
+                builder.append(normalizedToken.uppercase())
+                index += 1
+                continue
+            }
+
             val fuzzyLetter = fuzzyYMap(normalizedToken)
             if (fuzzyLetter != null) {
                 Log.i(CODE_MODE_TAG, "fuzzyYMap: $normalizedToken -> Y")
@@ -463,6 +471,25 @@ class CodeModeNormalizer {
             return token.uppercase()
         }
         return null
+    }
+
+    private fun shouldPreserveLiteralToken(tokens: List<String>, index: Int, codeLikeInput: Boolean): Boolean {
+        val token = tokens[index]
+        if (!token.all { it in 'a'..'z' }) {
+            return false
+        }
+        if (token.length == 1) {
+            val previousIsDigits = tokens.getOrNull(index - 1)?.all { it.isDigit() } == true
+            val nextIsDigits = tokens.getOrNull(index + 1)?.all { it.isDigit() } == true
+            return (previousIsDigits && nextIsDigits) || codeLikeInput
+        }
+        return codeLikeInput
+    }
+
+    private fun isCodeLike(tokens: List<String>): Boolean {
+        val hasDigits = tokens.any { token -> token.any { it.isDigit() } }
+        val hasLetters = tokens.any { token -> token.any { it in 'a'..'z' } }
+        return hasDigits && hasLetters
     }
 
 }
