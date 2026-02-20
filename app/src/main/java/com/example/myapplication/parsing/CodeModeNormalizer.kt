@@ -43,6 +43,7 @@ class CodeModeNormalizer {
         }
 
         val builder = StringBuilder()
+        val codeLikeInput = isCodeLike(tokens)
         var segment = 0
         var hasSegment = false
         var hasHundreds = false
@@ -181,6 +182,13 @@ class CodeModeNormalizer {
                 index += 1
                 continue
             }
+
+            if (shouldPreserveLiteralToken(tokens, index, codeLikeInput)) {
+                builder.append(normalizedToken.uppercase())
+                index += 1
+                continue
+            }
+
             val fuzzyLetter = fuzzyYMap(normalizedToken)
             if (fuzzyLetter != null) {
                 Log.i(CODE_MODE_TAG, "fuzzyYMap: $normalizedToken -> Y")
@@ -280,6 +288,23 @@ class CodeModeNormalizer {
                 token in slashTokens ||
                 token == "przez"
         }
+        return Result(normalizeCableManufacturerSuffix(normalized), tokens)
+    }
+
+    internal fun normalizeCableManufacturerSuffix(code: String): String {
+        if (!looksLikeCableCode(code)) {
+            return code
+        }
+        val suffixMatch = cableSuffixVariantRegex.find(code) ?: return code
+        return code.replaceRange(suffixMatch.range, suffixMatch.groupValues[1] + "NKT")
+    }
+
+    private fun looksLikeCableCode(code: String): Boolean {
+        val hasCablePrefix = cableCodePrefixes.any { code.startsWith(it) }
+        if (!hasCablePrefix) {
+            return false
+        }
+        return cableDimensionRegex.containsMatchIn(code)
     }
 
     private fun matchSlashToken(tokens: List<String>, index: Int): Int? {
@@ -551,6 +576,9 @@ class CodeModeNormalizer {
             addAll(tensMap.keys)
             addAll(hundredsMap.keys)
         }
+        private val cableCodePrefixes = listOf("YKY", "YDYP", "YDY", "OWY")
+        private val cableDimensionRegex = Regex("\\d+x\\d")
+        private val cableSuffixVariantRegex = Regex("([-/]?)(MKD|MKP|KATE|ENKATE)$")
     }
 
     private fun fuzzyYMap(token: String): String? {
@@ -567,6 +595,25 @@ class CodeModeNormalizer {
             return token.uppercase()
         }
         return null
+    }
+
+    private fun shouldPreserveLiteralToken(tokens: List<String>, index: Int, codeLikeInput: Boolean): Boolean {
+        val token = tokens[index]
+        if (!token.all { it in 'a'..'z' }) {
+            return false
+        }
+        if (token.length == 1) {
+            val previousIsDigits = tokens.getOrNull(index - 1)?.all { it.isDigit() } == true
+            val nextIsDigits = tokens.getOrNull(index + 1)?.all { it.isDigit() } == true
+            return (previousIsDigits && nextIsDigits) || codeLikeInput
+        }
+        return codeLikeInput
+    }
+
+    private fun isCodeLike(tokens: List<String>): Boolean {
+        val hasDigits = tokens.any { token -> token.any { it.isDigit() } }
+        val hasLetters = tokens.any { token -> token.any { it in 'a'..'z' } }
+        return hasDigits && hasLetters
     }
 
 }
