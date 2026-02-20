@@ -182,7 +182,23 @@ class CodeModeNormalizer {
                     it == '-' ||
                     it == 'x'
             }
-        return Result(normalized, tokens)
+        return Result(normalizeCableManufacturerSuffix(normalized), tokens)
+    }
+
+    internal fun normalizeCableManufacturerSuffix(code: String): String {
+        if (!looksLikeCableCode(code)) {
+            return code
+        }
+        val suffixMatch = cableSuffixVariantRegex.find(code) ?: return code
+        return code.replaceRange(suffixMatch.range, suffixMatch.groupValues[1] + "NKT")
+    }
+
+    private fun looksLikeCableCode(code: String): Boolean {
+        val hasCablePrefix = cableCodePrefixes.any { code.startsWith(it) }
+        if (!hasCablePrefix) {
+            return false
+        }
+        return cableDimensionRegex.containsMatchIn(code)
     }
 
     private fun matchSlashToken(tokens: List<String>, index: Int): Int? {
@@ -447,6 +463,10 @@ class CodeModeNormalizer {
             "dziesiata" to 10,
             "dziesiate" to 10
         )
+
+        private val cableCodePrefixes = listOf("YKY", "YDYP", "YDY", "OWY")
+        private val cableDimensionRegex = Regex("\\d+x\\d")
+        private val cableSuffixVariantRegex = Regex("([-/]?)(MKD|MKP|KATE|ENKATE)$")
     }
 
     private fun fuzzyYMap(token: String): String? {

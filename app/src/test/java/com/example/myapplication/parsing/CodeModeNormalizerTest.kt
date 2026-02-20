@@ -182,6 +182,28 @@ class CodeModeNormalizerTest {
         assertEquals("2,5", halfResult.normalized)
     }
 
+
+    @Test
+    fun normalizesCableManufacturerSuffixVariantsToNkt() {
+        val spokenSuffix = normalizer.normalize("igrek ka igrek trzy na dwa i pół en ka te")
+        assertEquals("YKY3x2,5NKT", spokenSuffix.normalized)
+
+        val mkdSuffix = normalizer.normalize("igrek ka igrek trzy na dwa i pół mkd")
+        assertEquals("YKY3x2,5NKT", mkdSuffix.normalized)
+
+        val mkpSuffix = normalizer.normalize("igrek ka igrek trzy na dwa i pół mkp")
+        assertEquals("YKY3x2,5NKT", mkpSuffix.normalized)
+
+        val kateSuffix = normalizer.normalize("igrek ka igrek trzy na dwa i pół kate")
+        assertEquals("YKY3x2,5NKT", kateSuffix.normalized)
+    }
+
+    @Test
+    fun doesNotChangeNonCableCodesWithSimilarSuffix() {
+        val result = normalizer.normalize("abc 123 mkp")
+        assertEquals("ABC123MKP", result.normalized)
+    }
+
     @Test
     fun keepsRawCodeInputs() {
         val codeSample = normalizer.normalize("A.0204Z2035")
