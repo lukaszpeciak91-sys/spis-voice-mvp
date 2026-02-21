@@ -272,6 +272,12 @@ class CodeModeNormalizer {
                 index += 1
                 continue
             }
+            if (token == ",") {
+                builder.append(",")
+                steps.add("comma:,")
+                index += 1
+                continue
+            }
             if (token == "-") {
                 builder.append("-")
                 steps.add("hyphen:-")
@@ -328,6 +334,7 @@ class CodeModeNormalizer {
                 token == "kropka" ||
                 token in dotTokens ||
                 token == "." ||
+                token == "," ||
                 token == "-" ||
                 token == "/" ||
                 token in hyphenTokens ||
@@ -350,6 +357,8 @@ class CodeModeNormalizer {
             val replacement = when {
                 token in slashAliasSingles -> "/"
                 token in dotTokens -> "."
+                token in commaTokens -> ","
+                token in hyphenAliasTokens -> "-"
                 token == "walu" -> "V"
                 token == "jot" || token == "iot" -> "J"
                 else -> null
@@ -399,6 +408,8 @@ class CodeModeNormalizer {
                 token in dotTokens ||
                 token in hyphenTokens ||
                 token in slashTokens ||
+                token in commaTokens ||
+                token in hyphenAliasTokens ||
                 token == "przez" ||
                 token in slashAliasSingles ||
                 (token in slashAliasFirstTokens) ||
@@ -637,6 +648,11 @@ class CodeModeNormalizer {
             "pauza",
             "kreska"
         )
+        private val hyphenAliasTokens = setOf(
+            "pauza",
+            "pauze",
+            "pauzo"
+        )
         private val dotTokens = setOf(
             "kropka",
             "kropke",
@@ -644,10 +660,17 @@ class CodeModeNormalizer {
             "krupka",
             "krupke"
         )
+        private val commaTokens = setOf(
+            "przecinek",
+            "przecinku",
+            "przecinkiem",
+            "przecinka",
+            "przecinki"
+        )
         private val slashAliasSingles = setOf("zlez", "zlasu", "stres")
         private val slashAliasFirstTokens = setOf("zl")
         private val slashAliasSecondTokens = setOf("lez")
-        private val canonicalSeparators = setOf("/", "-", ".")
+        private val canonicalSeparators = setOf("/", "-", ".", ",")
         private val fuzzyPrefixMap = mapOf(
             "mysl" to "-",
             "fal" to "V",

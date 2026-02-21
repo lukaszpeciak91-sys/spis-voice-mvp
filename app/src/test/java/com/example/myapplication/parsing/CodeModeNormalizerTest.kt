@@ -146,8 +146,26 @@ class CodeModeNormalizerTest {
         val myslNic = normalizer.normalize("2 myśl nic 4 myśl nic 6", forceCodeMode = true)
         assertEquals("2-4-6", myslNic.normalized)
 
+        val pauzaDeclensions = normalizer.normalize("dwa pauzę cztery pauzą sześć", forceCodeMode = true)
+        assertEquals("2-4-6", pauzaDeclensions.normalized)
+
         val mySilnik = normalizer.normalize("A my silnik B", forceCodeMode = true)
         assertEquals("A-B", mySilnik.normalized)
+    }
+
+    @Test
+    fun normalizesCommaAliasesInCodeMode() {
+        val basic = normalizer.normalize("dwa przecinek cztery przecinek sześć", forceCodeMode = true)
+        assertEquals("2,4,6", basic.normalized)
+
+        val mixed = normalizer.normalize("2 przecinek 4 minus 6", forceCodeMode = true)
+        assertEquals("2,4-6", mixed.normalized)
+    }
+
+    @Test
+    fun keepsPrzecinekLiteralOutsideCodeMode() {
+        val result = normalizer.normalize("dwa przecinek cztery")
+        assertEquals("DWAPRZECINEKCZTERY", result.normalized)
     }
 
     @Test
