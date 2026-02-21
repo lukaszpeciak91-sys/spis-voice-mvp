@@ -130,6 +130,69 @@ class CodeModeNormalizerTest {
     }
 
     @Test
+    fun normalizesSlashAliasesInForcedCodeMode() {
+        val zlLez = normalizer.normalize("A zł leż B", forceCodeMode = true)
+        assertEquals("A/B", zlLez.normalized)
+
+        val stres = normalizer.normalize("2 stres 4 stres 6", forceCodeMode = true)
+        assertEquals("2/4/6", stres.normalized)
+
+        val zLasu = normalizer.normalize("AB z lasu D3", forceCodeMode = true)
+        assertEquals("AB/D3", zLasu.normalized)
+    }
+
+    @Test
+    fun normalizesHyphenAliasesInForcedCodeMode() {
+        val myslNic = normalizer.normalize("2 myśl nic 4 myśl nic 6", forceCodeMode = true)
+        assertEquals("2-4-6", myslNic.normalized)
+
+        val mySilnik = normalizer.normalize("A my silnik B", forceCodeMode = true)
+        assertEquals("A-B", mySilnik.normalized)
+    }
+
+    @Test
+    fun normalizesDotAliasesInForcedCodeMode() {
+        val krupka = normalizer.normalize("2 krupka 4 krupka 6", forceCodeMode = true)
+        assertEquals("2.4.6", krupka.normalized)
+
+        val kropkaVariants = normalizer.normalize("2 kropkę 4 kropka 6", forceCodeMode = true)
+        assertEquals("2.4.6", kropkaVariants.normalized)
+    }
+
+    @Test
+    fun normalizesLetterAliasesInCodeContext() {
+        val walu = normalizer.normalize("A wału B", forceCodeMode = true)
+        assertEquals("AVB", walu.normalized)
+
+        val jot = normalizer.normalize("jot 1", forceCodeMode = true)
+        assertEquals("J1", jot.normalized)
+
+        val iot = normalizer.normalize("iot 2", forceCodeMode = true)
+        assertEquals("J2", iot.normalized)
+    }
+
+    @Test
+    fun keepsAliasWordsAsPlainTextWithoutCodeModeOrNeighborhood() {
+        val offMode = normalizer.normalize("to jest wału")
+        assertEquals("TOJESTWALU", offMode.normalized)
+
+        val noFuzzyNoForced = normalizer.normalize("to jest stres")
+        assertEquals("TOJESTSTRES", noFuzzyNoForced.normalized)
+    }
+
+    @Test
+    fun collapsesConsecutiveCanonicalSeparators() {
+        val hyphen = normalizer.normalize("2 myśl nic myśl nic 4", forceCodeMode = true)
+        assertEquals("2-4", hyphen.normalized)
+
+        val slash = normalizer.normalize("2 stres stres 4", forceCodeMode = true)
+        assertEquals("2/4", slash.normalized)
+
+        val dot = normalizer.normalize("2 krupka krupka 4", forceCodeMode = true)
+        assertEquals("2.4", dot.normalized)
+    }
+
+    @Test
     fun normalizesNaAndRazyAsX() {
         val naResult = normalizer.normalize("3 na 4")
         assertEquals("3x4", naResult.normalized)

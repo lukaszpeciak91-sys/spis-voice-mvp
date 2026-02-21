@@ -16,7 +16,7 @@ class CodeModeNormalizer {
         val assemblySteps: String
     )
 
-    fun normalize(rawText: String, enableFuzzy: Boolean = false): Result {
+    fun normalize(rawText: String, enableFuzzy: Boolean = false, forceCodeMode: Boolean = false): Result {
         val trimmed = rawText.trim()
         if (trimmed.isNotEmpty() && trimmed.any { it.isDigit() } && trimmed.none { it.isWhitespace() }) {
             val normalized = trimmed.uppercase().replace("X", "x")
@@ -28,7 +28,9 @@ class CodeModeNormalizer {
             )
         }
 
-        val tokens = normalizeFractions(tokenize(rawText))
+        val tokenized = tokenize(rawText)
+        val aliasNormalized = normalizeCodeAliases(tokenized, enableFuzzy, forceCodeMode)
+        val tokens = normalizeFractions(aliasNormalized)
         if (tokens.isEmpty()) {
             return Result(
                 normalized = "",
@@ -79,6 +81,18 @@ class CodeModeNormalizer {
                 flushSegment()
                 builder.append("/")
                 index += slashMatch
+                continue
+            }
+            if (normalizedToken == "-") {
+                flushSegment()
+                builder.append("-")
+                index += 1
+                continue
+            }
+            if (normalizedToken == ".") {
+                flushSegment()
+                builder.append(".")
+                index += 1
                 continue
             }
             if (hyphenTokens.contains(normalizedToken)) {
@@ -246,6 +260,24 @@ class CodeModeNormalizer {
                 index += slashMatch
                 continue
             }
+            if (token == "/") {
+                builder.append("/")
+                steps.add("slash:/")
+                index += 1
+                continue
+            }
+            if (token == ".") {
+                builder.append(".")
+                steps.add("dot:.")
+                index += 1
+                continue
+            }
+            if (token == "-") {
+                builder.append("-")
+                steps.add("hyphen:-")
+                index += 1
+                continue
+            }
             if (token == "kropka") {
                 builder.append(".")
                 steps.add("dot:.")
@@ -294,10 +326,125 @@ class CodeModeNormalizer {
             token.all { it.isDigit() } ||
                 numberWords.contains(token) ||
                 token == "kropka" ||
+                token in dotTokens ||
+                token == "." ||
+                token == "-" ||
+                token == "/" ||
                 token in hyphenTokens ||
                 token in slashTokens ||
                 token == "przez"
         }
+    }
+
+    private fun normalizeCodeAliases(tokens: List<String>, enableFuzzy: Boolean, forceCodeMode: Boolean): List<String> {
+        if (!enableFuzzy && !forceCodeMode && !isCodeLike(tokens)) {
+            return tokens
+        }
+        val spokenNumericContext = isLikelySpokenNumericCode(tokens)
+        val normalized = mutableListOf<String>()
+        var index = 0
+        while (index < tokens.size) {
+            val token = tokens[index]
+            val nextToken = tokens.getOrNull(index + 1)
+
+            val replacement = when {
+                token in slashAliasSingles -> "/"
+                token in dotTokens -> "."
+                token == "walu" -> "V"
+                token == "jot" || token == "iot" -> "J"
+                else -> null
+            }
+
+            if (replacement != null && shouldApplyCodeAlias(tokens, index, spokenNumericContext, forceCodeMode)) {
+                normalized.add(replacement)
+                index += 1
+                continue
+            }
+
+            if (nextToken != null && shouldApplyCodeAlias(tokens, index, spokenNumericContext, forceCodeMode)) {
+                if (token in slashAliasFirstTokens && nextToken in slashAliasSecondTokens) {
+                    normalized.add("/")
+                    index += 2
+                    continue
+                }
+                if (token == "z" && nextToken == "lasu") {
+                    normalized.add("/")
+                    index += 2
+                    continue
+                }
+                if ((token == "mysl" || token == "mysli") && nextToken == "nic") {
+                    normalized.add("-")
+                    index += 2
+                    continue
+                }
+                if (token == "my" && nextToken == "silnik") {
+                    normalized.add("-")
+                    index += 2
+                    continue
+                }
+            }
+
+            normalized.add(token)
+            index += 1
+        }
+
+        return collapseConsecutiveSeparators(normalized)
+    }
+
+    private fun isLikelySpokenNumericCode(tokens: List<String>): Boolean {
+        return tokens.isNotEmpty() && tokens.all { token ->
+            token.all { it.isDigit() } ||
+                numberWords.contains(token) ||
+                token == "kropka" ||
+                token in dotTokens ||
+                token in hyphenTokens ||
+                token in slashTokens ||
+                token == "przez" ||
+                token in slashAliasSingles ||
+                (token in slashAliasFirstTokens) ||
+                token in slashAliasSecondTokens ||
+                token == "mysl" ||
+                token == "mysli" ||
+                token == "nic" ||
+                token == "my" ||
+                token == "silnik"
+        }
+    }
+
+    private fun shouldApplyCodeAlias(
+        tokens: List<String>,
+        index: Int,
+        spokenNumericContext: Boolean,
+        forceCodeMode: Boolean
+    ): Boolean {
+        if (forceCodeMode || spokenNumericContext) {
+            return true
+        }
+        val previous = tokens.getOrNull(index - 1)
+        val next = tokens.getOrNull(index + 1)
+        return isCodeLikeNeighborhoodToken(previous) || isCodeLikeNeighborhoodToken(next)
+    }
+
+    private fun isCodeLikeNeighborhoodToken(token: String?): Boolean {
+        if (token == null) return false
+        if (token.all { it.isDigit() }) return true
+        if (singleLetter(token) != null) return true
+        if (token in canonicalSeparators || token in hyphenTokens || token in slashTokens || token in dotTokens) {
+            return true
+        }
+        return false
+    }
+
+    private fun collapseConsecutiveSeparators(tokens: List<String>): List<String> {
+        val normalized = mutableListOf<String>()
+        for (token in tokens) {
+            val prev = normalized.lastOrNull()
+            if (token in canonicalSeparators && token == prev) {
+                continue
+            }
+            normalized.add(token)
+        }
+        return normalized
     }
 
     internal fun normalizeCableManufacturerSuffix(code: String): String {
@@ -323,6 +470,9 @@ class CodeModeNormalizer {
             return 2
         }
         if (slashTokens.contains(token)) {
+            return 1
+        }
+        if (token == "/") {
             return 1
         }
         return null
@@ -487,6 +637,17 @@ class CodeModeNormalizer {
             "pauza",
             "kreska"
         )
+        private val dotTokens = setOf(
+            "kropka",
+            "kropke",
+            "kropce",
+            "krupka",
+            "krupke"
+        )
+        private val slashAliasSingles = setOf("zlez", "zlasu", "stres")
+        private val slashAliasFirstTokens = setOf("zl")
+        private val slashAliasSecondTokens = setOf("lez")
+        private val canonicalSeparators = setOf("/", "-", ".")
         private val fuzzyPrefixMap = mapOf(
             "mysl" to "-",
             "fal" to "V",
