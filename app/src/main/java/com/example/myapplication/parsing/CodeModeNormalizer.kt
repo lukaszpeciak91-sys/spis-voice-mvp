@@ -413,12 +413,34 @@ class CodeModeNormalizer {
             val shouldMapAlias = shouldApplyContextualLetterAlias(tokens, index, spelledStreamMask)
             val shouldMapSpelledOnlyAlias = shouldApplySpelledOnlyAlias(tokens, index, spelledStreamMask)
 
+            if ((token == "iod" || token == "jod") && (shouldMapAlias || shouldMapSpelledOnlyAlias)) {
+                normalized.add("J")
+                index += 1
+                continue
+            }
+
+            if (token == "j" && tokens.getOrNull(index + 1) == "od" && (shouldMapAlias || shouldMapSpelledOnlyAlias)) {
+                normalized.add("J")
+                index += 2
+                continue
+            }
+
             if (token == "i" && shouldMapAlias) {
                 val optionalSecondI = if (tokens.getOrNull(index + 1) == "i") 1 else 0
                 if (tokens.getOrNull(index + 1 + optionalSecondI) == "od") {
                     normalized.add("J")
                     index += 2 + optionalSecondI
                     continue
+                }
+            }
+
+            if (token == "i" && shouldMapSpelledOnlyAlias) {
+                when (tokens.getOrNull(index + 1)) {
+                    "grek", "greka", "greg", "grega" -> {
+                        normalized.add("Y")
+                        index += 2
+                        continue
+                    }
                 }
             }
 
@@ -433,10 +455,13 @@ class CodeModeNormalizer {
                     "gier" -> "G"
                     "ez" -> "S"
                     "wół", "wol" -> "W"
-                    "faul" -> "V"
-                    "kju", "ku", "kiju", "kijow", "kukol", "kol", "kolko" -> "Q"
-                    "walu" -> if (shouldMapSpelledOnlyAlias) "V" else null
-                    "lodz", "lu", "lo" -> if (shouldMapSpelledOnlyAlias) "U" else null
+                    "faul", "fauł" -> "V"
+                    "kju", "ku", "kiju", "kijow", "kukol", "kol", "kolko", "kół" -> "Q"
+                    "walu", "wał", "wału" -> if (shouldMapSpelledOnlyAlias) "V" else null
+                    "lodz", "łódź", "lu", "lo" -> if (shouldMapSpelledOnlyAlias) "U" else null
+                    "by" -> if (shouldMapSpelledOnlyAlias) "B" else null
+                    "dy" -> if (shouldMapSpelledOnlyAlias) "D" else null
+                    "gdzie" -> if (shouldMapSpelledOnlyAlias) "G" else null
                     "ry", "ery", "nr" -> if (shouldMapSpelledOnlyAlias) "R" else null
                     "te" -> if (shouldMapAlias || shouldMapSpelledOnlyAlias) "T" else null
                     else -> null
@@ -510,8 +535,11 @@ class CodeModeNormalizer {
         if (token in spelledOnlyContextualLetterAliasSingles) return true
         if (token == "i" && tokens.getOrNull(index + 1) == "od") return true
         if (token == "i" && tokens.getOrNull(index + 1) == "i" && tokens.getOrNull(index + 2) == "od") return true
+        if (token == "j" && tokens.getOrNull(index + 1) == "od") return true
+        if (token == "i" && tokens.getOrNull(index + 1) in yTwoTokenSecondTokens) return true
         if (token == "od" && tokens.getOrNull(index - 1) == "i") return true
         if (token == "od" && tokens.getOrNull(index - 1) == "i" && tokens.getOrNull(index - 2) == "i") return true
+        if (token in yTwoTokenSecondTokens && tokens.getOrNull(index - 1) == "i") return true
         return false
     }
 
@@ -771,7 +799,9 @@ class CodeModeNormalizer {
         private val hyphenAliasTokens = setOf(
             "pauza",
             "pauze",
-            "pauzo"
+            "pauzo",
+            "pauzę",
+            "pauzą"
         )
         private val dotTokens = setOf(
             "kropka",
@@ -807,14 +837,19 @@ class CodeModeNormalizer {
         )
         private val spelledOnlyContextualLetterAliasSingles = setOf(
             "walu",
+            "wal",
             "lodz",
             "lu",
             "lo",
+            "by",
+            "dy",
+            "gdzie",
             "ry",
             "ery",
             "nr",
             "te"
         )
+        private val yTwoTokenSecondTokens = setOf("grek", "greka", "greg", "grega")
         private val fuzzyPrefixMap = mapOf(
             "mysl" to "-",
             "fal" to "V",
