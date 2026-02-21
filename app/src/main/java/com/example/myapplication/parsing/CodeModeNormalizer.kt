@@ -41,7 +41,7 @@ class CodeModeNormalizer {
             )
         }
 
-        if (isSpokenNumericCode(tokens)) {
+        if (isPureSpokenNumericStream(tokens)) {
             val spokenResult = assembleSpokenNumericCode(tokens)
             val patched = normalizeCableManufacturerSuffix(spokenResult.normalized)
             return spokenResult.copy(normalized = patched)
@@ -328,20 +328,32 @@ class CodeModeNormalizer {
         return summary.take(maxLength - 3) + "..."
     }
 
-    private fun isSpokenNumericCode(tokens: List<String>): Boolean {
+    private fun isPureSpokenNumericStream(tokens: List<String>): Boolean {
         return tokens.isNotEmpty() && tokens.all { token ->
-            token.all { it.isDigit() } ||
-                numberWords.contains(token) ||
-                token == "kropka" ||
-                token in dotTokens ||
-                token == "." ||
-                token == "," ||
-                token == "-" ||
-                token == "/" ||
-                token in hyphenTokens ||
-                token in slashTokens ||
-                token == "przez"
+            val normalizedToken = token.lowercase()
+            if (isLetterToken(token)) {
+                return@all false
+            }
+            if (normalizedToken in contextualLetterAliasSingles || normalizedToken in spelledOnlyContextualLetterAliasSingles) {
+                return@all false
+            }
+
+            normalizedToken.all { it.isDigit() } ||
+                numberWords.contains(normalizedToken) ||
+                normalizedToken == "kropka" ||
+                normalizedToken in dotTokens ||
+                normalizedToken == "." ||
+                normalizedToken == "," ||
+                normalizedToken == "-" ||
+                normalizedToken == "/" ||
+                normalizedToken in hyphenTokens ||
+                normalizedToken in slashTokens ||
+                normalizedToken == "przez"
         }
+    }
+
+    private fun isLetterToken(token: String): Boolean {
+        return token.length == 1 && token[0].isLetter()
     }
 
     private fun normalizeCodeAliases(tokens: List<String>, enableFuzzy: Boolean, forceCodeMode: Boolean): List<String> {
@@ -483,7 +495,7 @@ class CodeModeNormalizer {
         if (spelledStreamMask[index]) {
             return true
         }
-        return isCodeLikeToken(tokens.getOrNull(index - 1)) || isCodeLikeToken(tokens.getOrNull(index + 1))
+        return isCodeLikeNeighbor(tokens.getOrNull(index - 1)) || isCodeLikeNeighbor(tokens.getOrNull(index + 1))
     }
 
     private fun shouldApplySpelledOnlyAlias(tokens: List<String>, index: Int, spelledStreamMask: BooleanArray): Boolean {
@@ -496,7 +508,8 @@ class CodeModeNormalizer {
             next?.let { isCodeLikeNeighbor(it) } == true
     }
 
-    private fun isCodeLikeNeighbor(token: String): Boolean {
+    private fun isCodeLikeNeighbor(token: String?): Boolean {
+        if (token == null) return false
         return isCodeLikeToken(token) || isNumericContextToken(token)
     }
 
