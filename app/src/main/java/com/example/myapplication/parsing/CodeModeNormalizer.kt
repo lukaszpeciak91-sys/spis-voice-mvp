@@ -100,6 +100,13 @@ class CodeModeNormalizer {
                 continue
             }
 
+            if (isContextualMiddleD(tokens, index)) {
+                flushSegment()
+                builder.append("D")
+                index += 1
+                continue
+            }
+
             if (normalizedToken == "zero") {
                 if (hasSegment && segment > 0) {
                     flushSegment()
@@ -333,7 +340,7 @@ class CodeModeNormalizer {
         var index = 0
         while (index < tokens.size) {
             val token = tokens[index]
-            if (token == "poltora") {
+            if (token in halfTokens) {
                 normalized.add("1,5")
                 index += 1
                 continue
@@ -578,9 +585,10 @@ class CodeModeNormalizer {
             addAll(tensMap.keys)
             addAll(hundredsMap.keys)
         }
+        private val halfTokens = setOf("poltora", "poltorej")
         private val cableCodePrefixes = listOf("YKY", "YDYP", "YDY", "OWY")
         private val cableDimensionRegex = Regex("\\d+x\\d")
-        private val cableSuffixVariantRegex = Regex("([-/]?)(MKD|MKP|KATE|ENKATE)$")
+        private val cableSuffixVariantRegex = Regex("([-/]?)(MKD|MKP|KATE|ENKATE|MKATE)$")
     }
 
     private fun fuzzyYMap(token: String): String? {
@@ -616,6 +624,20 @@ class CodeModeNormalizer {
         val hasDigits = tokens.any { token -> token.any { it.isDigit() } }
         val hasLetters = tokens.any { token -> token.any { it in 'a'..'z' } }
         return hasDigits && hasLetters
+    }
+
+    private fun isContextualMiddleD(tokens: List<String>, index: Int): Boolean {
+        val token = tokens.getOrNull(index)?.lowercase() ?: return false
+        if (token != "do" && token != "de") {
+            return false
+        }
+        val previous = tokens.getOrNull(index - 1) ?: return false
+        val next = tokens.getOrNull(index + 1) ?: return false
+        return isNumericContextToken(previous) && isNumericContextToken(next)
+    }
+
+    private fun isNumericContextToken(token: String): Boolean {
+        return token.all { it.isDigit() } || token in numberWords
     }
 
 }

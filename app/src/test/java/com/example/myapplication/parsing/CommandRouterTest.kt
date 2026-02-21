@@ -57,12 +57,27 @@ class CommandRouterTest {
         assertEquals("10285", item.name)
         assertEquals(26, item.quantity)
         assertEquals(UnitType.M, item.unit)
+    }
+
+    @Test
     fun preservesMidCodeLetterInForcedCodeModeWithQuantitySplit() {
-        val routed = router.route("JAM 60 D 40 pauza 500 ilosc 10 sztuk", forceCodeMode = true)
+        val routed = router.route("JAM 60 do 40 pauza 500 ilosc 10 sztuk", forceCodeMode = true)
         val item = routed.result as VoiceCommandResult.Item
         assertEquals(CommandRouter.Route.CODE, routed.route)
         assertEquals("JAM60D40-500", item.name)
         assertEquals(10, item.quantity)
+        assertEquals(ParseStatus.OK, item.parseStatus)
+    }
+
+
+    @Test
+    fun normalizesCablePoltorejAndNktSuffixWithQuantitySplit() {
+        val routed = router.route("YKY jeden na półtorej m kate ilosc 1 szt", forceCodeMode = true)
+        val item = routed.result as VoiceCommandResult.Item
+        assertEquals(CommandRouter.Route.CODE, routed.route)
+        assertEquals("YKY1x1,5NKT", item.name)
+        assertEquals(1, item.quantity)
+        assertEquals(UnitType.SZT, item.unit)
         assertEquals(ParseStatus.OK, item.parseStatus)
     }
 
@@ -73,11 +88,14 @@ class CommandRouterTest {
         assertEquals(CommandRouter.Route.NONE, routed.route)
         assertEquals("sto dwa osiemdziesiat piec", item.name)
         assertEquals(ParseStatus.OK, item.parseStatus)
+    }
+
+    @Test
     fun offModeOrdinaryWordsAreNotTurnedIntoCodes() {
-        val routed = router.route("to jest zwykly opis", forceCodeMode = false)
+        val routed = router.route("to jest zwykly opis do poprawki", forceCodeMode = false)
         val item = routed.result as VoiceCommandResult.Item
         assertEquals(CommandRouter.Route.NONE, routed.route)
-        assertEquals("TO JEST ZWYKLY OPIS", item.name)
+        assertEquals("TO JEST ZWYKLY OPIS DO POPRAWKI", item.name)
     }
 
     @Test
