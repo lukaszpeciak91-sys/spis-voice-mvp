@@ -450,4 +450,25 @@ class CodeModeNormalizerTest {
         assertEquals("3S300", result.normalized)
         assertEquals(CodeModeNormalizer.CodeModeClass.ALPHANUM_CODE, result.codeModeClass)
     }
+
+    @Test
+    fun mapsSpelledOnlyAliasesBetweenNumericNeighborsInForcedCodeMode() {
+        val kiju = normalizer.normalize("dziewięć kiju dziesięć", forceCodeMode = true)
+        assertEquals("9Q10", kiju.normalized)
+
+        val kol = normalizer.normalize("dziewięć kół dziesięć", forceCodeMode = true)
+        assertEquals("9Q10", kol.normalized)
+
+        val ery = normalizer.normalize("dziewięć ery dziesięć", forceCodeMode = true)
+        assertEquals("9R10", ery.normalized)
+
+        val nr = normalizer.normalize("dziewięć nr dziesięć", forceCodeMode = true)
+        assertEquals("9R10", nr.normalized)
+    }
+
+    @Test
+    fun keepsNumericNeighborAliasesDisabledOutsideForcedCodeMode() {
+        val result = normalizer.normalize("dziewięć kiju dziesięć")
+        assertEquals("910", result.normalized)
+    }
 }
