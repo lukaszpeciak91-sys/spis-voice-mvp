@@ -519,4 +519,35 @@ class CodeModeNormalizerTest {
         val iGreg = normalizer.normalize("H i greg K")
         assertEquals("HIGREGK", iGreg.normalized)
     }
+
+    @Test
+    fun keepsMixedSpokenNumericAndLetterAliasesOutOfPureNumericPathInForcedCodeMode() {
+        val kol = normalizer.normalize("cztery kół dziesięć", forceCodeMode = true)
+        assertEquals("4Q10", kol.normalized)
+
+        val kiju = normalizer.normalize("cztery kiju dziesięć", forceCodeMode = true)
+        assertEquals("4Q10", kiju.normalized)
+
+        val ery = normalizer.normalize("dziewięć ery dziesięć", forceCodeMode = true)
+        assertEquals("9R10", ery.normalized)
+
+        val nr = normalizer.normalize("dziewięć nr dziesięć", forceCodeMode = true)
+        assertEquals("9R10", nr.normalized)
+
+        val walu = normalizer.normalize("dziewięć wału dziesięć", forceCodeMode = true)
+        assertEquals("9V10", walu.normalized)
+    }
+
+    @Test
+    fun keepsPureSpokenNumericAssemblyAndKeyRegressionInForcedCodeMode() {
+        val numeric = normalizer.normalize("sto dwa osiemdziesiat piec", forceCodeMode = true)
+        assertEquals("10285", numeric.normalized)
+
+        val hyphenated = normalizer.normalize("dwa minus cztery minus sześć", forceCodeMode = true)
+        assertEquals("2-4-6", hyphenated.normalized)
+
+        val jam = normalizer.normalize("JAM 60 do 40 pauza 500", forceCodeMode = true)
+        assertEquals("JAM60D40-500", jam.normalized)
+    }
+
 }
