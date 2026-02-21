@@ -1072,7 +1072,7 @@ fun SpisScreen() {
                                 Text("${row.rawText} | ${row.quantity} ${row.unit?.label}")
                             }
                             if (debugOverlayEnabled) {
-                                val debugData = buildDebugViewData(row, resolveCodeMode(row))
+                                val codeMode = resolveCodeMode(row)
                                 val rowIndex = rows.indexOfFirst { it.id == row.id }
                                 Spacer(Modifier.height(4.dp))
                                 Column(
@@ -1110,42 +1110,42 @@ fun SpisScreen() {
                                     val mutedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
 
                                     Text(
-                                        text = "VOSK RAW: ${debugData.voskRaw ?: "-"}",
+                                        text = "VOSK RAW: ${row.voskRawText?.ifBlank { "-" } ?: "-"}",
                                         style = debugTextStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "ROUTER INPUT (SANITIZED): ${debugData.routerInputSanitized}",
+                                        text = "ROUTER INPUT (SANITIZED): -",
                                         style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "partA: ${debugData.partA}",
+                                        text = "partA: -",
                                         style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "partB: ${debugData.partB}",
+                                        text = "partB: -",
                                         style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "codeMode: ${if (debugData.codeMode) "ON" else "OFF"}",
+                                        text = "codeMode: ${if (codeMode) "ON" else "OFF"}",
                                         style = debugTextStyle,
                                         color = mutedColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "normalizedA: ${row.normalizedText ?: partA}",
+                                        text = "normalizedA: ${row.normalizedText ?: "-"}",
                                         style = debugValueStyle,
                                         color = mutedColor,
                                         maxLines = 1,
