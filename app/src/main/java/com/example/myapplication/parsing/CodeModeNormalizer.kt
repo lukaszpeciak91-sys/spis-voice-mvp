@@ -411,20 +411,34 @@ class CodeModeNormalizer {
         while (index < tokens.size) {
             val token = tokens[index]
             val shouldMapAlias = shouldApplyContextualLetterAlias(tokens, index, spelledStreamMask)
+            val shouldMapSpelledOnlyAlias = shouldApplySpelledOnlyAlias(tokens, index, spelledStreamMask)
 
-            if (index + 1 < tokens.size && token == "i" && tokens[index + 1] == "od" && shouldMapAlias) {
-                normalized.add("J")
+            if (token == "i" && shouldMapAlias) {
+                val optionalSecondI = if (tokens.getOrNull(index + 1) == "i") 1 else 0
+                if (tokens.getOrNull(index + 1 + optionalSecondI) == "od") {
+                    normalized.add("J")
+                    index += 2 + optionalSecondI
+                    continue
+                }
+            }
+
+            if (token == "ku" && tokens.getOrNull(index + 1) == "kol" && shouldMapAlias) {
+                normalized.add("Q")
                 index += 2
                 continue
             }
 
-            if (shouldMapAlias) {
+            if (shouldMapAlias || shouldMapSpelledOnlyAlias) {
                 val replacement = when (token) {
                     "gier" -> "G"
                     "ez" -> "S"
                     "wół", "wol" -> "W"
                     "faul" -> "V"
-                    "wału", "walu" -> "V"
+                    "kju", "ku", "kiju", "kijow", "kukol", "kol", "kolko" -> "Q"
+                    "walu" -> if (shouldMapSpelledOnlyAlias) "V" else null
+                    "lodz", "lu", "lo" -> if (shouldMapSpelledOnlyAlias) "U" else null
+                    "ry" -> if (shouldMapSpelledOnlyAlias) "R" else null
+                    "te" -> if (shouldMapAlias || shouldMapSpelledOnlyAlias) "T" else null
                     else -> null
                 }
                 if (replacement != null) {
@@ -445,6 +459,15 @@ class CodeModeNormalizer {
             return true
         }
         return isCodeLikeToken(tokens.getOrNull(index - 1)) || isCodeLikeToken(tokens.getOrNull(index + 1))
+    }
+
+    private fun shouldApplySpelledOnlyAlias(tokens: List<String>, index: Int, spelledStreamMask: BooleanArray): Boolean {
+        if (spelledStreamMask[index]) {
+            return true
+        }
+        val previous = tokens.getOrNull(index - 1)
+        val next = tokens.getOrNull(index + 1)
+        return singleLetter(previous) != null && singleLetter(next) != null
     }
 
     private fun detectSpelledStreamMask(tokens: List<String>): BooleanArray {
@@ -479,8 +502,11 @@ class CodeModeNormalizer {
         if (singleLetter(token) != null) return true
         if (token in canonicalSeparators) return true
         if (token in contextualLetterAliasSingles) return true
+        if (token in spelledOnlyContextualLetterAliasSingles) return true
         if (token == "i" && tokens.getOrNull(index + 1) == "od") return true
+        if (token == "i" && tokens.getOrNull(index + 1) == "i" && tokens.getOrNull(index + 2) == "od") return true
         if (token == "od" && tokens.getOrNull(index - 1) == "i") return true
+        if (token == "od" && tokens.getOrNull(index - 1) == "i" && tokens.getOrNull(index - 2) == "i") return true
         return false
     }
 
@@ -712,8 +738,6 @@ class CodeModeNormalizer {
             "en" to "N",
             "o" to "O",
             "pe" to "P",
-            "ku" to "Q",
-            "kiu" to "Q",
             "q" to "Q",
             "er" to "R",
             "es" to "S",
@@ -768,16 +792,27 @@ class CodeModeNormalizer {
             "wół",
             "wol",
             "faul",
-            "wału",
-            "walu"
+            "kju",
+            "ku",
+            "kiju",
+            "kijow",
+            "kukol",
+            "kol",
+            "kolko"
+        )
+        private val spelledOnlyContextualLetterAliasSingles = setOf(
+            "walu",
+            "lodz",
+            "lu",
+            "lo",
+            "ry",
+            "te"
         )
         private val fuzzyPrefixMap = mapOf(
             "mysl" to "-",
             "fal" to "V",
             "fau" to "V",
             "fals" to "V",
-            "ku" to "Q",
-            "kiu" to "Q",
             "kol" to "Q"
         )
 

@@ -123,7 +123,7 @@ class CodeModeNormalizerTest {
 
     @Test
     fun normalizesQAndVAliases() {
-        val qResult = normalizer.normalize("ku 1")
+        val qResult = normalizer.normalize("ku 1", forceCodeMode = true)
         assertEquals("Q1", qResult.normalized)
         val vResult = normalizer.normalize("fał 2")
         assertEquals("V2", vResult.normalized)
@@ -189,6 +189,59 @@ class CodeModeNormalizerTest {
         assertEquals("J2", iot.normalized)
     }
 
+
+
+    @Test
+    fun normalizesQAliasesInSpelledStreamForcedCodeMode() {
+        val kju = normalizer.normalize("A kju B", forceCodeMode = true)
+        assertEquals("AQB", kju.normalized)
+
+        val ku = normalizer.normalize("A ku B", forceCodeMode = true)
+        assertEquals("AQB", ku.normalized)
+
+        val kiju = normalizer.normalize("A kiju B", forceCodeMode = true)
+        assertEquals("AQB", kiju.normalized)
+
+        val kijow = normalizer.normalize("A kijów B", forceCodeMode = true)
+        assertEquals("AQB", kijow.normalized)
+
+        val kukol = normalizer.normalize("A kukol B", forceCodeMode = true)
+        assertEquals("AQB", kukol.normalized)
+
+        val kuKol = normalizer.normalize("A ku kol B", forceCodeMode = true)
+        assertEquals("AQB", kuKol.normalized)
+    }
+
+    @Test
+    fun normalizesVVariantsInSpelledStreamForcedCodeMode() {
+        val faulVariant = normalizer.normalize("A fauł B", forceCodeMode = true)
+        assertEquals("AVB", faulVariant.normalized)
+
+        val waluVariant = normalizer.normalize("A wału B", forceCodeMode = true)
+        assertEquals("AVB", waluVariant.normalized)
+    }
+
+    @Test
+    fun normalizesUVariantsInSpelledStreamForcedCodeMode() {
+        val lodzVariant = normalizer.normalize("T łódź V", forceCodeMode = true)
+        assertEquals("TUV", lodzVariant.normalized)
+
+        val luVariant = normalizer.normalize("T łu V", forceCodeMode = true)
+        assertEquals("TUV", luVariant.normalized)
+    }
+
+    @Test
+    fun normalizesRyAsRInSpelledStreamForcedCodeMode() {
+        val result = normalizer.normalize("Q ry S", forceCodeMode = true)
+        assertEquals("QRS", result.normalized)
+    }
+
+    @Test
+    fun normalizesTeWithOgonekAsTInSpelledStreamForcedCodeMode() {
+        val result = normalizer.normalize("S tę U", forceCodeMode = true)
+        assertEquals("STU", result.normalized)
+    }
+
     @Test
     fun normalizesSpelledStreamContextualLetterAliasesInForcedCodeMode() {
         val result = normalizer.normalize(
@@ -208,6 +261,9 @@ class CodeModeNormalizerTest {
     fun mapsTwoTokenJAliasInForcedCodeMode() {
         val result = normalizer.normalize("H i od K", forceCodeMode = true)
         assertEquals("HJK", result.normalized)
+
+        val resultWithExtraI = normalizer.normalize("H i i od K", forceCodeMode = true)
+        assertEquals("HJK", resultWithExtraI.normalized)
     }
 
     @Test
@@ -223,6 +279,29 @@ class CodeModeNormalizerTest {
 
         val forcedResult = normalizer.normalize("to jest wału i wół", forceCodeMode = true)
         assertEquals("TOJESTWALUIWOL", forcedResult.normalized)
+    }
+
+
+
+    @Test
+    fun keepsKuLiteralOutsideCodeMode() {
+        val result = normalizer.normalize("ku temu")
+        assertEquals("KUTEMU", result.normalized)
+    }
+
+    @Test
+    fun keepsLodzLiteralOutsideForcedCodeMode() {
+        val result = normalizer.normalize("to lodz")
+        assertEquals("TOLODZ", result.normalized)
+    }
+
+    @Test
+    fun keepsRyLiteralInForcedCodeModeOutsideSpelledStream() {
+        val result = normalizer.normalize("to ry dzis")
+        assertEquals("TORYDZIS", result.normalized)
+
+        val forcedResult = normalizer.normalize("to ry dzis", forceCodeMode = true)
+        assertEquals("TORYDZIS", forcedResult.normalized)
     }
 
     @Test
