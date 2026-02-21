@@ -39,7 +39,9 @@ class CodeModeNormalizer {
         }
 
         if (isSpokenNumericCode(tokens)) {
-            return assembleSpokenNumericCode(tokens)
+            val spokenResult = assembleSpokenNumericCode(tokens)
+            val patched = normalizeCableManufacturerSuffix(spokenResult.normalized)
+            return spokenResult.copy(normalized = patched)
         }
 
         val builder = StringBuilder()
@@ -215,10 +217,11 @@ class CodeModeNormalizer {
                     it == '-' ||
                     it == 'x'
             }
+        val patched = normalizeCableManufacturerSuffix(normalized)
         return Result(
-            normalized = normalized,
+            normalized = patched,
             tokens = tokens,
-            codeModeClass = if (normalized.isBlank()) CodeModeClass.FREE_TEXT else CodeModeClass.ALPHANUM_CODE,
+            codeModeClass = if (patched.isBlank()) CodeModeClass.FREE_TEXT else CodeModeClass.ALPHANUM_CODE,
             assemblySteps = "default_assembly(tokens=${tokens.size})"
         )
     }
@@ -288,7 +291,6 @@ class CodeModeNormalizer {
                 token in slashTokens ||
                 token == "przez"
         }
-        return Result(normalizeCableManufacturerSuffix(normalized), tokens)
     }
 
     internal fun normalizeCableManufacturerSuffix(code: String): String {
