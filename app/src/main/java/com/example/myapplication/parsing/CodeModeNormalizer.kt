@@ -437,7 +437,7 @@ class CodeModeNormalizer {
                     "kju", "ku", "kiju", "kijow", "kukol", "kol", "kolko" -> "Q"
                     "walu" -> if (shouldMapSpelledOnlyAlias) "V" else null
                     "lodz", "lu", "lo" -> if (shouldMapSpelledOnlyAlias) "U" else null
-                    "ry" -> if (shouldMapSpelledOnlyAlias) "R" else null
+                    "ry", "ery", "nr" -> if (shouldMapSpelledOnlyAlias) "R" else null
                     "te" -> if (shouldMapAlias || shouldMapSpelledOnlyAlias) "T" else null
                     else -> null
                 }
@@ -467,8 +467,12 @@ class CodeModeNormalizer {
         }
         val previous = tokens.getOrNull(index - 1)
         val next = tokens.getOrNull(index + 1)
-        return previous?.let { singleLetter(it) } != null &&
-            next?.let { singleLetter(it) } != null
+        return previous?.let { isCodeLikeNeighbor(it) } == true &&
+            next?.let { isCodeLikeNeighbor(it) } == true
+    }
+
+    private fun isCodeLikeNeighbor(token: String): Boolean {
+        return isCodeLikeToken(token) || isNumericContextToken(token)
     }
 
     private fun detectSpelledStreamMask(tokens: List<String>): BooleanArray {
@@ -807,6 +811,8 @@ class CodeModeNormalizer {
             "lu",
             "lo",
             "ry",
+            "ery",
+            "nr",
             "te"
         )
         private val fuzzyPrefixMap = mapOf(
