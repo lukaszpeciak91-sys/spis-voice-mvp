@@ -29,7 +29,8 @@ class CodeModeNormalizer {
         }
 
         val tokenized = tokenize(rawText)
-        val aliasNormalized = normalizeCodeAliases(tokenized, enableFuzzy, forceCodeMode)
+        val letterAliasNormalized = normalizeCodeLetterAliases(tokenized, forceCodeMode)
+        val aliasNormalized = normalizeCodeAliases(letterAliasNormalized, enableFuzzy, forceCodeMode)
         val tokens = normalizeFractions(aliasNormalized)
         if (tokens.isEmpty()) {
             return Result(
@@ -359,7 +360,6 @@ class CodeModeNormalizer {
                 token in dotTokens -> "."
                 token in commaTokens -> ","
                 token in hyphenAliasTokens -> "-"
-                token == "walu" -> "V"
                 token == "jot" || token == "iot" -> "J"
                 else -> null
             }
@@ -400,6 +400,90 @@ class CodeModeNormalizer {
         return collapseConsecutiveSeparators(normalized)
     }
 
+    private fun normalizeCodeLetterAliases(tokens: List<String>, forceCodeMode: Boolean): List<String> {
+        if (!forceCodeMode || tokens.isEmpty()) {
+            return tokens
+        }
+
+        val spelledStreamMask = detectSpelledStreamMask(tokens)
+        val normalized = mutableListOf<String>()
+        var index = 0
+        while (index < tokens.size) {
+            val token = tokens[index]
+            val shouldMapAlias = shouldApplyContextualLetterAlias(tokens, index, spelledStreamMask)
+
+            if (index + 1 < tokens.size && token == "i" && tokens[index + 1] == "od" && shouldMapAlias) {
+                normalized.add("J")
+                index += 2
+                continue
+            }
+
+            if (shouldMapAlias) {
+                val replacement = when (token) {
+                    "gier" -> "G"
+                    "ez" -> "S"
+                    "wół", "wol" -> "W"
+                    "faul" -> "V"
+                    "wału", "walu" -> "V"
+                    else -> null
+                }
+                if (replacement != null) {
+                    normalized.add(replacement)
+                    index += 1
+                    continue
+                }
+            }
+
+            normalized.add(token)
+            index += 1
+        }
+        return normalized
+    }
+
+    private fun shouldApplyContextualLetterAlias(tokens: List<String>, index: Int, spelledStreamMask: BooleanArray): Boolean {
+        if (spelledStreamMask[index]) {
+            return true
+        }
+        return isCodeLikeToken(tokens.getOrNull(index - 1)) || isCodeLikeToken(tokens.getOrNull(index + 1))
+    }
+
+    private fun detectSpelledStreamMask(tokens: List<String>): BooleanArray {
+        val candidates = BooleanArray(tokens.size)
+        for (i in tokens.indices) {
+            candidates[i] = isSpelledStreamCandidate(tokens, i)
+        }
+
+        val inStream = BooleanArray(tokens.size)
+        var start = 0
+        while (start < tokens.size) {
+            if (!candidates[start]) {
+                start += 1
+                continue
+            }
+            var end = start
+            while (end < tokens.size && candidates[end]) {
+                end += 1
+            }
+            if (end - start >= 5) {
+                for (i in start until end) {
+                    inStream[i] = true
+                }
+            }
+            start = end
+        }
+        return inStream
+    }
+
+    private fun isSpelledStreamCandidate(tokens: List<String>, index: Int): Boolean {
+        val token = tokens[index]
+        if (singleLetter(token) != null) return true
+        if (token in canonicalSeparators) return true
+        if (token in contextualLetterAliasSingles) return true
+        if (token == "i" && tokens.getOrNull(index + 1) == "od") return true
+        if (token == "od" && tokens.getOrNull(index - 1) == "i") return true
+        return false
+    }
+
     private fun isLikelySpokenNumericCode(tokens: List<String>): Boolean {
         return tokens.isNotEmpty() && tokens.all { token ->
             token.all { it.isDigit() } ||
@@ -437,10 +521,17 @@ class CodeModeNormalizer {
     }
 
     private fun isCodeLikeNeighborhoodToken(token: String?): Boolean {
+        return isCodeLikeToken(token)
+    }
+
+    private fun isCodeLikeToken(token: String?): Boolean {
         if (token == null) return false
         if (token.all { it.isDigit() }) return true
         if (singleLetter(token) != null) return true
         if (token in canonicalSeparators || token in hyphenTokens || token in slashTokens || token in dotTokens) {
+            return true
+        }
+        if (token.length > 1 && token.all { it.isLetterOrDigit() } && token.any { it.isLetter() } && token.any { it.isDigit() }) {
             return true
         }
         return false
@@ -671,6 +762,15 @@ class CodeModeNormalizer {
         private val slashAliasFirstTokens = setOf("zl")
         private val slashAliasSecondTokens = setOf("lez")
         private val canonicalSeparators = setOf("/", "-", ".", ",")
+        private val contextualLetterAliasSingles = setOf(
+            "gier",
+            "ez",
+            "wół",
+            "wol",
+            "faul",
+            "wału",
+            "walu"
+        )
         private val fuzzyPrefixMap = mapOf(
             "mysl" to "-",
             "fal" to "V",

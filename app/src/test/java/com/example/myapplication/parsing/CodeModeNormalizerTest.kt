@@ -190,6 +190,42 @@ class CodeModeNormalizerTest {
     }
 
     @Test
+    fun normalizesSpelledStreamContextualLetterAliasesInForcedCodeMode() {
+        val result = normalizer.normalize(
+            "a b c d e f gier ha i i od k l m n o p ez te u wół faul ix igrek zet",
+            forceCodeMode = true
+        )
+        assertEquals("ABCDEFGHIJKLMNOPQRSTUVWXYZ", result.normalized)
+    }
+
+    @Test
+    fun mapsWaluToVInSpelledStreamForcedCodeMode() {
+        val result = normalizer.normalize("a b c d wału", forceCodeMode = true)
+        assertEquals("ABCDV", result.normalized)
+    }
+
+    @Test
+    fun mapsTwoTokenJAliasInForcedCodeMode() {
+        val result = normalizer.normalize("H i od K", forceCodeMode = true)
+        assertEquals("HJK", result.normalized)
+    }
+
+    @Test
+    fun keepsTwoTokenJAliasDisabledOutsideForcedCodeMode() {
+        val result = normalizer.normalize("i od jutra", forceCodeMode = false)
+        assertEquals("IODJUTRA", result.normalized)
+    }
+
+    @Test
+    fun keepsContextualAliasesForPlainSentenceInForcedCodeMode() {
+        val result = normalizer.normalize("to jest wału")
+        assertEquals("TOJESTWALU", result.normalized)
+
+        val forcedResult = normalizer.normalize("to jest wału i wół", forceCodeMode = true)
+        assertEquals("TOJESTWALUIWOL", forcedResult.normalized)
+    }
+
+    @Test
     fun keepsAliasWordsAsPlainTextWithoutCodeModeOrNeighborhood() {
         val offMode = normalizer.normalize("to jest wału")
         assertEquals("TOJESTWALU", offMode.normalized)
