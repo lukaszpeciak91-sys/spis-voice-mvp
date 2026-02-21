@@ -459,6 +459,36 @@ class CodeModeNormalizerTest {
         val kol = normalizer.normalize("dziewięć kół dziesięć", forceCodeMode = true)
         assertEquals("9Q10", kol.normalized)
 
+        val faul = normalizer.normalize("dziewięć fauł dziesięć", forceCodeMode = true)
+        assertEquals("9V10", faul.normalized)
+
+        val walu = normalizer.normalize("dziewięć wału dziesięć", forceCodeMode = true)
+        assertEquals("9V10", walu.normalized)
+
+        val lodz = normalizer.normalize("dziewięć łódź dziesięć", forceCodeMode = true)
+        assertEquals("9U10", lodz.normalized)
+
+        val by = normalizer.normalize("A by C", forceCodeMode = true)
+        assertEquals("ABC", by.normalized)
+
+        val dy = normalizer.normalize("A dy C", forceCodeMode = true)
+        assertEquals("ADC", dy.normalized)
+
+        val gdzie = normalizer.normalize("A gdzie C", forceCodeMode = true)
+        assertEquals("AGC", gdzie.normalized)
+
+        val iOd = normalizer.normalize("H i od K", forceCodeMode = true)
+        assertEquals("HJK", iOd.normalized)
+
+        val iod = normalizer.normalize("H iod K", forceCodeMode = true)
+        assertEquals("HJK", iod.normalized)
+
+        val jod = normalizer.normalize("H jod K", forceCodeMode = true)
+        assertEquals("HJK", jod.normalized)
+
+        val iGreg = normalizer.normalize("H i greg K", forceCodeMode = true)
+        assertEquals("HYK", iGreg.normalized)
+
         val ery = normalizer.normalize("dziewięć ery dziesięć", forceCodeMode = true)
         assertEquals("9R10", ery.normalized)
 
@@ -470,5 +500,23 @@ class CodeModeNormalizerTest {
     fun keepsNumericNeighborAliasesDisabledOutsideForcedCodeMode() {
         val result = normalizer.normalize("dziewięć kiju dziesięć")
         assertEquals("910", result.normalized)
+
+        val by = normalizer.normalize("A by C")
+        assertEquals("ABYC", by.normalized)
+
+        val dy = normalizer.normalize("A dy C")
+        assertEquals("ADYC", dy.normalized)
+
+        val gdzie = normalizer.normalize("A gdzie C")
+        assertEquals("AGDZIEC", gdzie.normalized)
+
+        val iod = normalizer.normalize("H iod K")
+        assertEquals("HIODK", iod.normalized)
+
+        val jod = normalizer.normalize("H jod K")
+        assertEquals("HJODK", jod.normalized)
+
+        val iGreg = normalizer.normalize("H i greg K")
+        assertEquals("HIGREGK", iGreg.normalized)
     }
 }
