@@ -467,7 +467,8 @@ class CodeModeNormalizer {
         }
         val previous = tokens.getOrNull(index - 1)
         val next = tokens.getOrNull(index + 1)
-        return singleLetter(previous) != null && singleLetter(next) != null
+        return previous?.let { singleLetter(it) } != null &&
+            next?.let { singleLetter(it) } != null
     }
 
     private fun detectSpelledStreamMask(tokens: List<String>): BooleanArray {
