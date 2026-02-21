@@ -205,6 +205,25 @@ class CodeModeNormalizerTest {
         assertEquals("ABC123MKP", result.normalized)
     }
 
+
+    @Test
+    fun preservesMidLetterDOnlyInDigitContext() {
+        val doVariant = normalizer.normalize("jam 60 do 40 pauza 500")
+        assertEquals("JAM60D40-500", doVariant.normalized)
+
+        val deVariant = normalizer.normalize("jam 60 de 40 pauza 500")
+        assertEquals("JAM60D40-500", deVariant.normalized)
+
+        val nonContext = normalizer.normalize("jam do poprawki")
+        assertEquals("JAMDOPRAWKI", nonContext.normalized)
+    }
+
+    @Test
+    fun normalizesCableDimensionWithPoltorejAndSkipsMeterToken() {
+        val result = normalizer.normalize("yky jeden na poltorej m kate")
+        assertEquals("YKY1x1,5NKT", result.normalized)
+    }
+
     @Test
     fun keepsRawCodeInputs() {
         val codeSample = normalizer.normalize("A.0204Z2035")
