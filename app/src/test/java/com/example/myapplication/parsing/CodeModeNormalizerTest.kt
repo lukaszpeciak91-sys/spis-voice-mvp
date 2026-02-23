@@ -151,6 +151,27 @@ class CodeModeNormalizerTest {
 
         val mySilnik = normalizer.normalize("A my silnik B", forceCodeMode = true)
         assertEquals("A-B", mySilnik.normalized)
+
+        val numericMySilnik = normalizer.normalize("trzy my silnik cztery a b", forceCodeMode = true)
+        assertEquals("3-4AB", numericMySilnik.normalized)
+    }
+
+    @Test
+    fun keepsQAliasesWithDiacriticsInForcedCodeMode() {
+        val kol = normalizer.normalize("kół dziesięć", forceCodeMode = true)
+        assertEquals("Q10", kol.normalized)
+
+        val prefixedKol = normalizer.normalize("cztery kół dziesięć", forceCodeMode = true)
+        assertEquals("4Q10", prefixedKol.normalized)
+
+        val kiju = normalizer.normalize("kiju dziesięć", forceCodeMode = true)
+        assertEquals("Q10", kiju.normalized)
+    }
+
+    @Test
+    fun keepsSlashAroundQAliasInForcedCodeMode() {
+        val result = normalizer.normalize("dwa łamane przez kół łamane przez trzy", forceCodeMode = true)
+        assertEquals("2/Q/3", result.normalized)
     }
 
     @Test

@@ -365,40 +365,42 @@ class CodeModeNormalizer {
         var index = 0
         while (index < tokens.size) {
             val token = tokens[index]
+            val tokenKey = aliasKey(token)
             val nextToken = tokens.getOrNull(index + 1)
+            val nextTokenKey = nextToken?.let(::aliasKey)
 
             val replacement = when {
-                token in slashAliasSingles -> "/"
-                token in dotTokens -> "."
-                token in commaTokens -> ","
-                token in hyphenAliasTokens -> "-"
-                token == "jot" || token == "iot" -> "J"
+                tokenKey in slashAliasSingles -> "/"
+                tokenKey in dotTokens -> "."
+                tokenKey in commaTokens -> ","
+                tokenKey in hyphenAliasTokens -> "-"
+                tokenKey == "jot" || tokenKey == "iot" -> "J"
                 else -> null
             }
 
-            if (replacement != null && shouldApplyCodeAlias(tokens, index, spokenNumericContext, forceCodeMode)) {
+            if (replacement != null && shouldApplyCodeAlias(tokens, index, spokenNumericContext, forceCodeMode, replacement)) {
                 normalized.add(replacement)
                 index += 1
                 continue
             }
 
-            if (nextToken != null && shouldApplyCodeAlias(tokens, index, spokenNumericContext, forceCodeMode)) {
-                if (token in slashAliasFirstTokens && nextToken in slashAliasSecondTokens) {
+            if (nextToken != null && shouldApplyCodeAlias(tokens, index, spokenNumericContext, forceCodeMode, "multi_token_alias")) {
+                if (tokenKey in slashAliasFirstTokens && nextTokenKey in slashAliasSecondTokens) {
                     normalized.add("/")
                     index += 2
                     continue
                 }
-                if (token == "z" && nextToken == "lasu") {
+                if (tokenKey == "z" && nextTokenKey == "lasu") {
                     normalized.add("/")
                     index += 2
                     continue
                 }
-                if ((token == "mysl" || token == "mysli") && nextToken == "nic") {
+                if ((tokenKey == "mysl" || tokenKey == "mysli") && nextTokenKey == "nic") {
                     normalized.add("-")
                     index += 2
                     continue
                 }
-                if (token == "my" && nextToken == "silnik") {
+                if (tokenKey == "my" && nextTokenKey == "silnik") {
                     normalized.add("-")
                     index += 2
                     continue
@@ -422,32 +424,33 @@ class CodeModeNormalizer {
         var index = 0
         while (index < tokens.size) {
             val token = tokens[index]
+            val tokenKey = aliasKey(token)
             val shouldMapAlias = shouldApplyContextualLetterAlias(tokens, index, spelledStreamMask)
             val shouldMapSpelledOnlyAlias = shouldApplySpelledOnlyAlias(tokens, index, spelledStreamMask)
 
-            if ((token == "iod" || token == "jod") && (shouldMapAlias || shouldMapSpelledOnlyAlias)) {
+            if ((tokenKey == "iod" || tokenKey == "jod") && (shouldMapAlias || shouldMapSpelledOnlyAlias)) {
                 normalized.add("J")
                 index += 1
                 continue
             }
 
-            if (token == "j" && tokens.getOrNull(index + 1) == "od" && (shouldMapAlias || shouldMapSpelledOnlyAlias)) {
+            if (tokenKey == "j" && tokens.getOrNull(index + 1)?.let(::aliasKey) == "od" && (shouldMapAlias || shouldMapSpelledOnlyAlias)) {
                 normalized.add("J")
                 index += 2
                 continue
             }
 
-            if (token == "i" && shouldMapAlias) {
-                val optionalSecondI = if (tokens.getOrNull(index + 1) == "i") 1 else 0
-                if (tokens.getOrNull(index + 1 + optionalSecondI) == "od") {
+            if (tokenKey == "i" && shouldMapAlias) {
+                val optionalSecondI = if (tokens.getOrNull(index + 1)?.let(::aliasKey) == "i") 1 else 0
+                if (tokens.getOrNull(index + 1 + optionalSecondI)?.let(::aliasKey) == "od") {
                     normalized.add("J")
                     index += 2 + optionalSecondI
                     continue
                 }
             }
 
-            if (token == "i" && shouldMapSpelledOnlyAlias) {
-                when (tokens.getOrNull(index + 1)) {
+            if (tokenKey == "i" && shouldMapSpelledOnlyAlias) {
+                when (tokens.getOrNull(index + 1)?.let(::aliasKey)) {
                     "grek", "greka", "greg", "grega" -> {
                         normalized.add("Y")
                         index += 2
@@ -456,21 +459,21 @@ class CodeModeNormalizer {
                 }
             }
 
-            if (token == "ku" && tokens.getOrNull(index + 1) == "kol" && shouldMapAlias) {
+            if (tokenKey == "ku" && tokens.getOrNull(index + 1)?.let(::aliasKey) == "kol" && shouldMapAlias) {
                 normalized.add("Q")
                 index += 2
                 continue
             }
 
             if (shouldMapAlias || shouldMapSpelledOnlyAlias) {
-                val replacement = when (token) {
+                val replacement = when (tokenKey) {
                     "gier" -> "G"
                     "ez" -> "S"
-                    "wół", "wol" -> "W"
-                    "faul", "fauł" -> "V"
-                    "kju", "ku", "kiju", "kijow", "kukol", "kol", "kolko", "kół" -> "Q"
-                    "walu", "wał", "wału" -> if (shouldMapSpelledOnlyAlias) "V" else null
-                    "lodz", "łódź", "lu", "lo" -> if (shouldMapSpelledOnlyAlias) "U" else null
+                    "wol" -> "W"
+                    "faul" -> "V"
+                    "kju", "ku", "kiju", "kijow", "kukol", "kol", "kolko" -> "Q"
+                    "walu" -> if (shouldMapSpelledOnlyAlias) "V" else null
+                    "lodz", "lu", "lo" -> if (shouldMapSpelledOnlyAlias) "U" else null
                     "by" -> if (shouldMapSpelledOnlyAlias) "B" else null
                     "dy" -> if (shouldMapSpelledOnlyAlias) "D" else null
                     "gdzie" -> if (shouldMapSpelledOnlyAlias) "G" else null
@@ -542,17 +545,18 @@ class CodeModeNormalizer {
 
     private fun isSpelledStreamCandidate(tokens: List<String>, index: Int): Boolean {
         val token = tokens[index]
+        val tokenKey = aliasKey(token)
         if (singleLetter(token) != null) return true
-        if (token in canonicalSeparators) return true
-        if (token in contextualLetterAliasSingles) return true
-        if (token in spelledOnlyContextualLetterAliasSingles) return true
-        if (token == "i" && tokens.getOrNull(index + 1) == "od") return true
-        if (token == "i" && tokens.getOrNull(index + 1) == "i" && tokens.getOrNull(index + 2) == "od") return true
-        if (token == "j" && tokens.getOrNull(index + 1) == "od") return true
-        if (token == "i" && tokens.getOrNull(index + 1) in yTwoTokenSecondTokens) return true
-        if (token == "od" && tokens.getOrNull(index - 1) == "i") return true
-        if (token == "od" && tokens.getOrNull(index - 1) == "i" && tokens.getOrNull(index - 2) == "i") return true
-        if (token in yTwoTokenSecondTokens && tokens.getOrNull(index - 1) == "i") return true
+        if (tokenKey in canonicalSeparators) return true
+        if (tokenKey in contextualLetterAliasSingles) return true
+        if (tokenKey in spelledOnlyContextualLetterAliasSingles) return true
+        if (tokenKey == "i" && tokens.getOrNull(index + 1)?.let(::aliasKey) == "od") return true
+        if (tokenKey == "i" && tokens.getOrNull(index + 1)?.let(::aliasKey) == "i" && tokens.getOrNull(index + 2)?.let(::aliasKey) == "od") return true
+        if (tokenKey == "j" && tokens.getOrNull(index + 1)?.let(::aliasKey) == "od") return true
+        if (tokenKey == "i" && tokens.getOrNull(index + 1)?.let(::aliasKey) in yTwoTokenSecondTokens) return true
+        if (tokenKey == "od" && tokens.getOrNull(index - 1)?.let(::aliasKey) == "i") return true
+        if (tokenKey == "od" && tokens.getOrNull(index - 1)?.let(::aliasKey) == "i" && tokens.getOrNull(index - 2)?.let(::aliasKey) == "i") return true
+        if (tokenKey in yTwoTokenSecondTokens && tokens.getOrNull(index - 1)?.let(::aliasKey) == "i") return true
         return false
     }
 
@@ -582,8 +586,12 @@ class CodeModeNormalizer {
         tokens: List<String>,
         index: Int,
         spokenNumericContext: Boolean,
-        forceCodeMode: Boolean
+        forceCodeMode: Boolean,
+        replacement: String?
     ): Boolean {
+        if (forceCodeMode && replacement in canonicalSeparators) {
+            return true
+        }
         if (forceCodeMode || spokenNumericContext) {
             return true
         }
@@ -593,7 +601,7 @@ class CodeModeNormalizer {
     }
 
     private fun isCodeLikeNeighborhoodToken(token: String?): Boolean {
-        return isCodeLikeToken(token)
+        return token?.let { isCodeLikeToken(it) || isNumericContextToken(it) } == true
     }
 
     private fun isCodeLikeToken(token: String?): Boolean {
@@ -963,6 +971,25 @@ class CodeModeNormalizer {
         private val cableCodePrefixes = listOf("YKY", "YDYP", "YDY", "OWY")
         private val cableDimensionRegex = Regex("\\d+x\\d")
         private val cableSuffixVariantRegex = Regex("([-/]?)(MKD|MKP|KATE|ENKATE|MKATE)$")
+        private val polishAliasCharMap = mapOf(
+            'ą' to 'a',
+            'ć' to 'c',
+            'ę' to 'e',
+            'ł' to 'l',
+            'ń' to 'n',
+            'ó' to 'o',
+            'ś' to 's',
+            'ż' to 'z',
+            'ź' to 'z'
+        )
+    }
+
+    private fun aliasKey(token: String): String {
+        return buildString(token.length) {
+            for (char in token.lowercase().trim()) {
+                append(polishAliasCharMap[char] ?: char)
+            }
+        }
     }
 
     private fun fuzzyYMap(token: String): String? {
