@@ -105,4 +105,29 @@ class CommandRouterTest {
         assertEquals(CommandRouter.Route.CODE, routed.route)
         assertEquals("to jest zwykly opis", item.name)
     }
+
+    @Test
+    fun routesForcedDrumProfileToCanonicalAndResolvedCode() {
+        val routed = router.route(
+            "pe el be 6 ka 1 0 7 8 4 ilosc 2 sztuki",
+            forceCodeMode = true,
+            codeProfile = CommandRouter.CodeProfile.DRUM
+        )
+        val item = routed.result as VoiceCommandResult.Item
+        assertEquals(CommandRouter.Route.CODE, routed.route)
+        assertEquals("PLB6-K10784/NKT", item.name)
+        assertEquals("PLB6-K10784", routed.codeModeNormalized)
+        assertEquals("PLB_TYPE_SERIES_MAIN", routed.drumFamily)
+        assertEquals(2, item.quantity)
+        assertEquals(UnitType.SZT, item.unit)
+    }
+
+    @Test
+    fun keepsGenericForcedModeUntouchedWithoutDrumProfile() {
+        val routed = router.route("te 20 10 940", forceCodeMode = true)
+        val item = routed.result as VoiceCommandResult.Item
+        assertEquals(CommandRouter.Route.CODE, routed.route)
+        assertEquals("TE2010940", item.name)
+    }
+
 }
