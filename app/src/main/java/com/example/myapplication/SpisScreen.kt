@@ -307,6 +307,7 @@ fun SpisScreen() {
     var catalogMetadata by remember { mutableStateOf<CatalogMetadata?>(null) }
     var catalogError by remember { mutableStateOf<String?>(null) }
     var forceCodeModeNext by remember { mutableStateOf(false) }
+    var codeProfile by remember { mutableStateOf(CommandRouter.CodeProfile.GENERIC) }
     var debugOverlayEnabled by remember { mutableStateOf(false) }
     val debugCodeModeByRowId = remember { mutableStateMapOf<String, Boolean>() }
 
@@ -659,7 +660,11 @@ fun SpisScreen() {
         val routerInput = voskRawText.trim()
         Log.i(TAG, "Transcription complete: forcedCodeMode=$forceCodeModeNext rawTranscript=\"$voskRawText\"")
         if (routerInput.isNotEmpty()) {
-            val routed = commandRouter.route(routerInput, forceCodeModeNext)
+            val routed = commandRouter.route(
+                rawText = routerInput,
+                forceCodeMode = forceCodeModeNext,
+                codeProfile = codeProfile
+            )
             if (forceCodeModeNext) {
                 Log.i(TAG, "Transcription normalizedCode=\"${routed.codeModeNormalized}\"")
             }
@@ -811,6 +816,30 @@ fun SpisScreen() {
                         Text("Więcej")
                     }
                     DropdownMenu(expanded = overflowExpanded, onDismissRequest = { overflowExpanded = false }) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (forceCodeModeNext && codeProfile == CommandRouter.CodeProfile.DRUM) {
+                                        "Drum Code Mode: ON"
+                                    } else {
+                                        "Drum Code Mode: OFF"
+                                    }
+                                )
+                            },
+                            onClick = {
+                                val drumModeActive = forceCodeModeNext && codeProfile == CommandRouter.CodeProfile.DRUM
+                                if (drumModeActive) {
+                                    forceCodeModeNext = false
+                                    codeProfile = CommandRouter.CodeProfile.GENERIC
+                                    Toast.makeText(context, "Drum Code Mode wyłączony", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    forceCodeModeNext = true
+                                    codeProfile = CommandRouter.CodeProfile.DRUM
+                                    Toast.makeText(context, "Drum Code Mode włączony", Toast.LENGTH_SHORT).show()
+                                }
+                                overflowExpanded = false
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text("Kopiuj debug") },
                             onClick = {
@@ -1201,13 +1230,23 @@ fun SpisScreen() {
                     Spacer(modifier = Modifier.weight(1f))
 
                     OutlinedButton(
-                        onClick = { forceCodeModeNext = !forceCodeModeNext },
+                        onClick = {
+                            forceCodeModeNext = !forceCodeModeNext
+                            if (!forceCodeModeNext) {
+                                codeProfile = CommandRouter.CodeProfile.GENERIC
+                            }
+                        },
                         colors = ButtonDefaults.outlinedButtonColors(
                             containerColor = if (forceCodeModeNext) actionButtonAccentColor else actionButtonBaseColor,
                             contentColor = if (forceCodeModeNext) actionButtonOnAccentColor else actionButtonOnBaseColor
                         )
                     ) {
-                        Text(if (forceCodeModeNext) "CODE ON" else "CODE OFF")
+                        val modeLabel = when {
+                            forceCodeModeNext && codeProfile == CommandRouter.CodeProfile.DRUM -> "DRUM CODE ON"
+                            forceCodeModeNext -> "CODE ON"
+                            else -> "CODE OFF"
+                        }
+                        Text(modeLabel)
                     }
                 }
 
