@@ -5,9 +5,15 @@ import com.example.myapplication.ParseStatus
 
 class CommandRouter(
     private val voiceCommandParser: VoiceCommandParser = VoiceCommandParser(),
-    private val codeModeNormalizer: CodeModeNormalizer = CodeModeNormalizer()
+    private val codeModeNormalizer: CodeModeNormalizer = CodeModeNormalizer(),
+    private val drumCodeNormalizer: DrumCodeNormalizer = DrumCodeNormalizer()
 ) {
-    fun route(rawText: String, forceCodeMode: Boolean = false): RoutedCommand {
+    enum class CodeProfile {
+        GENERIC,
+        DRUM
+    }
+
+    fun route(rawText: String, forceCodeMode: Boolean = false, codeProfile: CodeProfile = CodeProfile.GENERIC): RoutedCommand {
         val trimmed = rawText.trim()
         if (trimmed.isBlank()) {
             return RoutedCommand(
@@ -19,6 +25,60 @@ class CommandRouter(
                     parseStatus = ParseStatus.FAIL,
                     debug = listOf("VoiceCommand: empty input")
                 )
+            )
+        }
+
+        if (forceCodeMode && codeProfile == CodeProfile.DRUM) {
+            val split = splitByQuantityMarker(trimmed)
+            if (split != null) {
+                val normalizedResult = drumCodeNormalizer.normalize(split.partA)
+                val finalText = normalizedResult.matchedFullCode ?: normalizedResult.canonicalStem.ifBlank { split.partA }
+                val quantityResult = voiceCommandParser.parseQuantityAndUnit(split.partB)
+                val item = VoiceCommandResult.Item(
+                    name = finalText,
+                    quantity = quantityResult.quantity,
+                    unit = quantityResult.unit,
+                    parseStatus = quantityResult.parseStatus,
+                    debug = listOf("VoiceCommand: drum code mode") + quantityResult.debug
+                )
+                return RoutedCommand(
+                    route = Route.CODE,
+                    result = item,
+                    forced = true,
+                    codeModeRaw = split.partA,
+                    codeModeNormalized = normalizedResult.canonicalStem,
+                    codeModeFinal = finalText,
+                    codeModeClass = "DRUM_CODE",
+                    assemblySteps = normalizedResult.debugSteps,
+                    drumFamily = normalizedResult.family,
+                    drumResolvedPrefix = normalizedResult.resolvedPrefix,
+                    drumMatchedFullCode = normalizedResult.matchedFullCode,
+                    drumAmbiguousMatches = normalizedResult.ambiguousMatches
+                )
+            }
+
+            val normalizedResult = drumCodeNormalizer.normalize(trimmed)
+            val finalText = normalizedResult.matchedFullCode ?: normalizedResult.canonicalStem.ifBlank { trimmed }
+            val item = VoiceCommandResult.Item(
+                name = finalText,
+                quantity = null,
+                unit = null,
+                parseStatus = ParseStatus.OK,
+                debug = listOf("VoiceCommand: drum code mode")
+            )
+            return RoutedCommand(
+                route = Route.CODE,
+                result = item,
+                forced = true,
+                codeModeRaw = trimmed,
+                codeModeNormalized = normalizedResult.canonicalStem,
+                codeModeFinal = finalText,
+                codeModeClass = "DRUM_CODE",
+                assemblySteps = normalizedResult.debugSteps,
+                drumFamily = normalizedResult.family,
+                drumResolvedPrefix = normalizedResult.resolvedPrefix,
+                drumMatchedFullCode = normalizedResult.matchedFullCode,
+                drumAmbiguousMatches = normalizedResult.ambiguousMatches
             )
         }
 
@@ -188,7 +248,11 @@ class CommandRouter(
         val codeModeFinal: String? = null,
         val codeModeTokens: List<String> = emptyList(),
         val codeModeClass: String? = null,
-        val assemblySteps: String? = null
+        val assemblySteps: String? = null,
+        val drumFamily: String? = null,
+        val drumResolvedPrefix: String? = null,
+        val drumMatchedFullCode: String? = null,
+        val drumAmbiguousMatches: List<String> = emptyList()
     )
 
     enum class Route {
